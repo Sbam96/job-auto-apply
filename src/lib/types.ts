@@ -48,7 +48,7 @@ export interface Profile {
   targetTitles: string[];
   seniority: Seniority; // lowest level to apply for
   seniorityMax: Seniority; // highest level to apply for
-  maxYearsAsked: number; // skip roles asking for more years than this (MT-08)
+  maxYearsAsked: number; // skip roles asking for more years than this, default 5 (MT-08)
   employmentTypes: EmploymentType[];
   salaryFloor: { usd: number | null; gbp: number | null };
   expectedSalary: { usd: number | null; gbp: number | null };

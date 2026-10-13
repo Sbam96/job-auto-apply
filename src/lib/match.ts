@@ -37,7 +37,7 @@ export function seniorityOf(title: string): Seniority {
   return "mid";
 }
 
-// MT-03: between the lowest and highest level the user picked (default mid to lead).
+// MT-03: between the lowest and highest level the user picked (default mid to senior).
 export function seniorityFits(jobLevel: Seniority, min: Seniority, max: Seniority = min) {
   const j = SENIORITY.indexOf(jobLevel);
   const lo = SENIORITY.indexOf(min);
@@ -156,7 +156,7 @@ export function evaluate(job: Job, profile: Profile, now: Date): Evaluation {
   const level = seniorityOf(job.title);
   if (!seniorityFits(level, profile.seniority, profile.seniorityMax)) return { pass: false, stage: "seniority", reason: `${level} level` };
   const need = requiredYears(job.description);
-  if (need != null && need > (profile.maxYearsAsked ?? 8)) return { pass: false, stage: "experience", reason: `asks for ${need}+ years` };
+  if (need != null && need > (profile.maxYearsAsked ?? 5)) return { pass: false, stage: "experience", reason: `asks for ${need}+ years` };
   if (!payFits(job, profile.salaryFloor)) return { pass: false, stage: "pay", reason: "below your pay floor" };
   const score = scoreJob(job, profile, now, titleKind);
   const threshold = profile.thresholds?.apply ?? APPLY_THRESHOLD;

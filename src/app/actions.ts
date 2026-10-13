@@ -118,7 +118,7 @@ export async function savePreferencesAction(_: FormState, f: FormData): Promise<
     const seniorityMax = str(f, "seniorityMax") as Profile["seniority"];
     if (!SENIORITY.includes(seniority) || !SENIORITY.includes(seniorityMax)) return "Pick the levels to apply for.";
     if (SENIORITY.indexOf(seniorityMax) < SENIORITY.indexOf(seniority)) return "The highest level can't be below the lowest.";
-    const maxYearsAsked = Math.min(30, Math.max(0, Math.round(Number(f.get("maxYearsAsked")) || 8)));
+    const maxYearsAsked = Math.min(30, Math.max(0, Math.round(Number(f.get("maxYearsAsked")) || 5)));
     const employmentTypes = f.getAll("employmentTypes").map(String).filter((t): t is Profile["employmentTypes"][number] => (EMPLOYMENT_TYPES as readonly string[]).includes(t));
     if (!employmentTypes.length) return "Tick at least one employment type.";
     let locations: UserLocation[];
