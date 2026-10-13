@@ -3,7 +3,7 @@
 
 import { APPLY_THRESHOLD, SENIORITY, type EmploymentType, type Region, type Seniority, type WorkMode } from "./config";
 import { matchLocation, parseLocation, type ParsedLocation } from "./location";
-import { skillsIn } from "./skills";
+import { canonicalSkill, hardSkills, skillsIn } from "./skills";
 import type { Job, Profile } from "./types";
 import { usableSkills } from "./cv";
 
@@ -115,8 +115,10 @@ export function scoreJob(job: Job, profile: Profile, now: Date, titleKind: "exac
   const title = titleKind === "exact" ? 30 : 22;
   const cvText = `${profile.summary} ${profile.experience.map((r) => `${r.title} ${r.bullets.filter((b) => b.status === "approved").map((b) => b.text).join(" ")}`).join(" ")}`;
   // A skill counts if it's on the CV, ticked in the skills bank, or shown in approved CV text.
-  const mine = new Set([...usableSkills(profile).map((s) => s.toLowerCase()), ...skillsIn(cvText)]);
-  const wanted = skillsIn(`${job.title} ${job.description}`, [...mine]);
+  const yours = usableSkills(profile);
+  const mine = new Set([...yours.map(canonicalSkill), ...skillsIn(cvText, yours)]);
+  // Soft skills (communication, problem solving…) are left out: they'd only drag scores down.
+  const wanted = hardSkills(skillsIn(`${job.title} ${job.description}`, yours));
   const matched = wanted.filter((s) => mine.has(s));
   const missing = wanted.filter((s) => !mine.has(s));
   // Full marks once you match most of what a job asks for; a long wish-list of tools doesn't sink the score.

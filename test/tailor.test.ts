@@ -135,3 +135,19 @@ describe("PR-02 one box of bullets", () => {
     expect(cvHtml(p, t)).toContain("<p>Claims Operations</p>");
   });
 });
+
+describe("TL-01 recovering mislabelled AI lines", () => {
+  test("TL-01 a reworded bullet with the wrong id is matched back to its original by wording", async () => {
+    const reply = { roles: [{ id: "r1", bullets: [{ sourceId: "bullet-2", text: "Wrote clear user stories and acceptance criteria in Jira for 3 agile teams" }] }], skills: [] };
+    const t = await tailor(profile(), job(), new FakeLLM(() => reply), { coverLetter: false });
+    const r1 = t.roles.find((r) => r.id === "r1")!;
+    expect(r1.bullets[0]).toEqual({ sourceId: "b2", text: "Wrote clear user stories and acceptance criteria in Jira for 3 agile teams" });
+    expect(t.warnings).toEqual([]);
+  });
+  test("TL-01 an invented line is left out, with one plain note", async () => {
+    const reply = { roles: [{ id: "r1", bullets: [{ sourceId: "zz", text: "Led a global team of 40 analysts" }, { sourceId: "yy", text: "Won an industry award" }] }], skills: [] };
+    const t = await tailor(profile(), job(), new FakeLLM(() => reply), { coverLetter: false });
+    expect(JSON.stringify(t.roles)).not.toMatch(/global team|award/);
+    expect(t.warnings).toEqual(["left out 2 lines the AI wrote that didn't match anything on your CV"]);
+  });
+});

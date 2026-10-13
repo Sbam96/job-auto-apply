@@ -123,3 +123,23 @@ describe("MT-07 duplicates", () => {
     expect(dedupeKey({ company: "Acme", title: "Business Analyst" }, "US")).not.toBe(dedupeKey({ company: "Acme", title: "Senior Business Analyst" }, "US"));
   });
 });
+
+describe("MT-06 matching phrasings, not just exact words", () => {
+  test("MT-06 'eliciting requirements' on a CV counts as 'requirements gathering' in a job ad", async () => {
+    const { skillsIn } = await import("@/lib/skills");
+    expect(skillsIn("Elicited and managed requirements; eliciting requirements with SMEs")).toEqual(expect.arrayContaining(["requirements gathering", "stakeholder management"]));
+    const p = profile({ summary: "BA experienced in eliciting requirements and facilitated workshops with stakeholders." });
+    const s = scoreJob(job({ description: "Requirements gathering, stakeholder engagement and workshop facilitation. Excellent communication and problem solving." }), p, NOW, "exact");
+    expect(s.matchedSkills).toEqual(expect.arrayContaining(["requirements gathering", "stakeholder management", "workshop facilitation"]));
+    expect(s.missingSkills).toEqual([]);
+  });
+  test("MT-06 soft skills are never counted as missing", () => {
+    const s = scoreJob(job({ description: "Communication, documentation, problem solving, critical thinking, collaboration." }), profile(), NOW, "exact");
+    expect(s.missingSkills).toEqual([]);
+  });
+  test("MT-06 'team dynamics' is not Microsoft Dynamics, and 'bank holidays' is not banking", async () => {
+    const { skillsIn } = await import("@/lib/skills");
+    expect(skillsIn("Great team dynamics and 25 days plus bank holidays")).toEqual([]);
+    expect(skillsIn("Experience with Dynamics 365")).toEqual(["microsoft dynamics"]);
+  });
+});

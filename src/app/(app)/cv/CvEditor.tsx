@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
 import { saveCvAction, suggestBulletsAction, type FormState } from "@/app/actions";
 import { FormMessage, SubmitButton } from "@/components/forms";
 import { Card, Field, secondaryButtonClass } from "@/components/ui";
@@ -44,6 +44,48 @@ export function CvEditor({ profile, common }: { profile: Profile; common: string
       return [...ss, { name: n, onCv: !bank, ticked: bank, suggested: false }];
     });
   };
+  // PR-08: read an uploaded CV into the editor. Nothing is saved until "Save CV".
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const importCv = async () => {
+    const file = fileRef.current?.files?.[0];
+    if (!file) { setImportMsg({ ok: false, text: "Choose your CV file first." }); return; }
+    if (roles.length && !window.confirm("This replaces the work history, summary, education and certifications in the editor with what's in your CV. Nothing is saved until you press Save CV. Carry on?")) return;
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const body = new FormData();
+      body.append("cv", file);
+      const res = await fetch("/api/cv/import", { method: "POST", body });
+      const data = await res.json();
+      if (!res.ok) { setImportMsg({ ok: false, text: data.error ?? "Couldn't read that CV." }); return; }
+      const cv = data.cv as { summary: string; experience: Role[]; education: Profile["education"]; certifications: string[]; skills: Skill[]; unverified: number };
+      const ordered = orderedRoles(cv.experience);
+      setRoles(ordered);
+      setDrafts(Object.fromEntries(ordered.map((r) => [r.id, bulletsToText(r.bullets)])));
+      if (cv.summary) setSummary(cv.summary);
+      if (cv.education.length) setEducation(cv.education);
+      if (cv.certifications.length) setCerts(cv.certifications.join("\n"));
+      setSkills((ss) => {
+        const out = [...ss];
+        for (const s of cv.skills) {
+          const i = out.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase());
+          if (i >= 0) out[i] = { ...out[i], onCv: true }; else out.push(s);
+        }
+        return out;
+      });
+      const bullets = ordered.reduce((n, r) => n + r.bullets.filter((b) => b.status === "approved").length, 0);
+      setImportMsg({
+        ok: true,
+        text: `Read ${ordered.length} role${ordered.length === 1 ? "" : "s"} and ${bullets} bullet${bullets === 1 ? "" : "s"}${cv.unverified ? `; ${cv.unverified} line${cv.unverified === 1 ? "" : "s"} couldn't be matched to your file word for word, so ${cv.unverified === 1 ? "it's" : "they're"} under "Suggestions to review"` : ""}.${data.filled?.length ? ` Also filled in your ${data.filled.join(", ")} on Details.` : ""} Check everything, then press Save CV.`,
+      });
+    } catch {
+      setImportMsg({ ok: false, text: "Upload failed. Check your connection and try again." });
+    } finally {
+      setImporting(false);
+    }
+  };
   const onCv = skills.filter((s) => s.onCv);
   const bank = skills.filter((s) => !s.onCv);
   const offered = common.filter((c) => !skills.some((s) => s.name.toLowerCase() === c.toLowerCase()));
@@ -52,6 +94,15 @@ export function CvEditor({ profile, common }: { profile: Profile; common: string
   return (
     <form action={action} className="space-y-6">
       <input type="hidden" name="cv" value={cv} />
+
+      <Card title="Start from your CV">
+        <p className="mb-3 text-sm text-muted">Upload your current CV (PDF, Word or text) and the editor fills in from it: roles, projects, dates, bullets, education and skills. Bullets are copied word for word. Your name and contact details are read here and never sent to the AI.</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" aria-label="Your CV file" className="text-sm file:mr-3 file:rounded-lg file:border file:border-line file:bg-surface file:px-3 file:py-2 file:text-sm file:font-semibold" />
+          <button type="button" onClick={importCv} disabled={importing} className={secondaryButtonClass}>{importing ? "Reading your CV…" : "Read my CV"}</button>
+        </div>
+        {importMsg && <p role={importMsg.ok ? "status" : "alert"} className={`mt-3 text-sm ${importMsg.ok ? "text-good" : "text-bad"}`}>{importMsg.text}</p>}
+      </Card>
 
       <Card title="Summary">
         <textarea aria-label="Summary" rows={3} value={summary} onChange={(e) => setSummary(e.target.value)} className="input" placeholder="Business Analyst with experience in …" />
