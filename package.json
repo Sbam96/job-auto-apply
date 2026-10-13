@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:e2e": "./test/run-e2e.sh",
+    "worker": "tsx worker/worker.ts"
   },
   "dependencies": {
     "next": "16.4.0",
@@ -31,5 +34,8 @@
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.4"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
