@@ -1,0 +1,59 @@
+import Link from "next/link";
+import { getDb } from "@/lib/db";
+import { requireUser } from "@/lib/session";
+import { listApplications } from "@/lib/store";
+import type { Status } from "@/lib/config";
+import { Empty, PageHeader, Score, StatusBadge } from "@/components/ui";
+
+const VIEWS: { key: string; label: string; statuses?: Status[] }[] = [
+  { key: "waiting", label: "Waiting for you", statuses: ["needs_approval", "needs_action"] },
+  { key: "queued", label: "Queued", statuses: ["queued"] },
+  { key: "active", label: "In progress", statuses: ["applied", "response", "interview", "offer"] },
+  { key: "closed", label: "Closed", statuses: ["rejected", "withdrawn", "skipped"] },
+  { key: "all", label: "All" },
+];
+
+export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const user = await requireUser();
+  const { view = "waiting" } = await searchParams;
+  const current = VIEWS.find((v) => v.key === view) ?? VIEWS[0];
+  const apps = await listApplications(await getDb(), user.id, current.statuses);
+  return (
+    <>
+      <PageHeader title="Applications" intro="Every role the app matched, what it did, and what's waiting for you." />
+      <div role="tablist" className="mb-5 flex flex-wrap gap-2">
+        {VIEWS.map((v) => (
+          <Link key={v.key} role="tab" aria-selected={v.key === current.key} href={`/applications?view=${v.key}`}
+            className={`rounded-full border px-3 py-1 text-sm ${v.key === current.key ? "border-accent bg-accent-soft font-medium text-accent" : "border-line bg-surface text-muted hover:text-ink"}`}>
+            {v.label}
+          </Link>
+        ))}
+      </div>
+      {apps.length === 0 ? (
+        <Empty title={`Nothing in ${current.label.toLowerCase()}`} />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+          <table className="w-full text-sm">
+            <thead className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+              <tr><th className="px-4 py-3 font-medium">Role</th><th className="px-4 py-3 font-medium">Location</th><th className="px-4 py-3 font-medium">Score</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 font-medium">Updated</th></tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {apps.map((a) => (
+                <tr key={a.id} className="hover:bg-canvas">
+                  <td className="px-4 py-3">
+                    <Link href={`/applications/${a.id}`} className="font-medium hover:text-accent">{a.title}</Link>
+                    <p className="text-muted">{a.company}{a.flags.length > 0 && <span className="ml-2 text-warn" title={a.flags.join("\n")}>⚑ {a.flags.length} note{a.flags.length > 1 ? "s" : ""}</span>}</p>
+                  </td>
+                  <td className="px-4 py-3 text-muted">{a.region} · {a.mode}</td>
+                  <td className="px-4 py-3"><Score value={a.score} /></td>
+                  <td className="px-4 py-3"><StatusBadge status={a.status} /></td>
+                  <td className="whitespace-nowrap px-4 py-3 text-muted">{a.updated_at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}

@@ -1,0 +1,33 @@
+# Free scheduling: GitHub Actions calls the app on Render.
+# Needs two repository secrets: APP_URL (e.g. https://job-auto-apply.onrender.com) and CRON_SECRET
+# (the same value as CRON_SECRET in Render).
+name: Scheduled search and report
+
+on:
+  schedule:
+    - cron: "15 6,10,14,18 * * *" # searches four times a day (UTC); Remotive allows 4 fetches a day
+    - cron: "5 23 * * *" # midnight report: 00:05 UK in summer (BST)
+    - cron: "5 0 * * *" # midnight report: 00:05 UK in winter (GMT); the app only sends once
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "search or report"
+        default: "search"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wake the app (free Render services sleep when idle)
+        run: |
+          for i in 1 2 3 4 5 6; do
+            curl -fsS --max-time 60 "${{ secrets.APP_URL }}/api/health" && break
+            sleep 20
+          done
+      - name: Run
+        run: |
+          TASK="search"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then TASK="${{ github.event.inputs.task }}"; fi
+          if [ "${{ github.event.schedule }}" = "5 23 * * *" ] || [ "${{ github.event.schedule }}" = "5 0 * * *" ]; then TASK="report"; fi
+          curl -fsS --max-time 600 -X POST -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" "${{ secrets.APP_URL }}/api/cron/${TASK}"
