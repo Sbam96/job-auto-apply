@@ -33,6 +33,25 @@ export async function createUser(db: Db, email: string, password: string): Promi
   return { user: { id, email: e, verifiedAt: null }, verifyToken };
 }
 
+// AU-05: sign in with Google. Finds the account by Google ID, then by email (linking it, since
+// Google has verified the address); otherwise creates a new, already-verified account.
+export async function googleUser(db: Db, g: { sub: string; email: string; name: string }): Promise<{ user: User; created: boolean }> {
+  const bySub = await db.query<{ id: string; email: string; verified_at: Date | null }>("SELECT id, email, verified_at FROM users WHERE google_sub = $1", [g.sub]);
+  if (bySub.rows[0]) return { user: { id: bySub.rows[0].id, email: bySub.rows[0].email, verifiedAt: bySub.rows[0].verified_at }, created: false };
+  const byEmail = await db.query<{ id: string; email: string }>(
+    "UPDATE users SET google_sub = $2, verified_at = COALESCE(verified_at, now()) WHERE email = $1 RETURNING id, email", [normaliseEmail(g.email), g.sub]);
+  if (byEmail.rows[0]) return { user: { id: byEmail.rows[0].id, email: byEmail.rows[0].email, verifiedAt: new Date() }, created: false };
+  // A random password nobody knows: this account signs in with Google (or a reset later).
+  const { user } = await createUser(db, g.email, newToken());
+  await db.query("UPDATE users SET google_sub = $2, verified_at = now() WHERE id = $1", [user.id, g.sub]);
+  await db.query("DELETE FROM email_tokens WHERE user_id = $1", [user.id]);
+  if (g.name) {
+    const p = await getProfile(db, user.id);
+    if (!p.fullName) await saveProfile(db, user.id, { ...p, fullName: g.name });
+  }
+  return { user: { ...user, verifiedAt: new Date() }, created: true };
+}
+
 export async function newEmailToken(db: Db, userId: string, purpose: string): Promise<string> {
   const token = newToken();
   await db.query("INSERT INTO email_tokens (token_hash, user_id, purpose, expires_at) VALUES ($1, $2, $3, now() + make_interval(hours => $4))",
