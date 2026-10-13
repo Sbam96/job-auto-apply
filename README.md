@@ -29,9 +29,12 @@ your master CV, and keeps your own words instead.
    address) and `CRON_SECRET` (the same value as in Render). The schedule in
    `.github/workflows/schedule.yml` then runs on its own. Run it once by hand from the Actions tab
    to check it works.
-4. **Email (recommended):** add the `SMTP_*` settings. Until then, emails (including the sign-up
+4. **Sign in with Google (optional):** create an OAuth client in Google Cloud Console (Web
+   application, redirect URI `https://<your-app>/auth/google/callback`) and set
+   `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Google accounts skip email verification.
+5. **Email (recommended):** add the `SMTP_*` settings, ideally for a Gmail account used only for sending. Until then, emails (including the sign-up
    verification link) are written to the Render logs.
-5. **Sign up** in the app, confirm your email, then fill in Details, Master CV and Preferences.
+6. **Sign up** in the app, confirm your email, then fill in Details, Master CV and Preferences.
 
 ## The laptop worker
 
