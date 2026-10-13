@@ -26,12 +26,31 @@ describe("MT-03 seniority", () => {
     expect(seniorityOf("Business Analyst")).toBe("mid");
     expect(seniorityOf("Associate Product Manager")).toBe("junior");
   });
-  test("MT-03 the baseline and one level above pass; below or two above are skipped", () => {
-    expect(seniorityFits("mid", "mid")).toBe(true);
-    expect(seniorityFits("senior", "mid")).toBe(true);
-    expect(seniorityFits("junior", "mid")).toBe(false);
-    expect(seniorityFits("lead", "mid")).toBe(false);
+  test("MT-03 levels between the lowest and highest picked pass; others are skipped", () => {
+    expect(seniorityFits("mid", "mid", "lead")).toBe(true);
+    expect(seniorityFits("senior", "mid", "lead")).toBe(true);
+    expect(seniorityFits("lead", "mid", "lead")).toBe(true);
+    expect(seniorityFits("junior", "mid", "lead")).toBe(false);
+    expect(seniorityFits("principal", "mid", "lead")).toBe(false);
+    expect(seniorityFits("senior", "mid", "mid")).toBe(false);
     expect(evaluate(job({ title: "Junior Business Analyst" }), profile(), NOW)).toMatchObject({ pass: false, stage: "seniority" });
+  });
+});
+
+describe("MT-08 years of experience asked for", () => {
+  test("MT-08 a role asking for 7 years still matches a 3-year analyst, within the default limit of 8", () => {
+    const p = profile({ experience: profile().experience.filter((r) => r.id !== "r0") }); // about 3.5 years
+    const ev = evaluate(job({ title: "Senior Business Analyst", description: "Senior BA: user stories, acceptance criteria, Jira, SQL, agile, stakeholder management, insurance. 7+ years of experience." }), p, NOW);
+    expect(ev).toMatchObject({ pass: true });
+    if (ev.pass) expect(ev.score.experience).toBe(11);
+  });
+  test("MT-08 a role asking for more years than the limit is skipped", () => {
+    const ev = evaluate(job({ description: "Business Analyst: user stories, Jira, SQL. 10+ years of experience." }), profile(), NOW);
+    expect(ev).toMatchObject({ pass: false, stage: "experience", reason: "asks for 10+ years" });
+    expect(evaluate(job({ description: "Business Analyst: user stories, Jira, SQL, agile. 10+ years of experience." }), profile({ maxYearsAsked: 12 }), NOW).pass).toBe(true);
+  });
+  test("MT-08 a Lead role is within the default level range", () => {
+    expect(evaluate(job({ title: "Lead Business Analyst" }), profile(), NOW).pass).toBe(true);
   });
 });
 

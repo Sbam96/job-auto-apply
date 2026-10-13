@@ -13,6 +13,8 @@ export function emptyProfile(): Profile {
     summary: "",
     targetTitles: ["Business Analyst"],
     seniority: "mid",
+    seniorityMax: "lead",
+    maxYearsAsked: 8,
     employmentTypes: ["permanent", "fixed-term"],
     salaryFloor: { usd: null, gbp: null },
     expectedSalary: { usd: null, gbp: null },

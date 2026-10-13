@@ -8,6 +8,7 @@ import { getDb } from "@/lib/db";
 import { validEmail } from "@/lib/auth";
 import { llmFromEnv } from "@/lib/llm";
 import { appUrl, sendMail } from "@/lib/mailer";
+import { REJECT_LABELS } from "@/lib/labels";
 import { londonDay, runSearch, type RunResult } from "@/lib/pipeline";
 import { requireUser, SESSION_COOKIE, setSessionCookie, currentUser } from "@/lib/session";
 import * as store from "@/lib/store";
@@ -114,7 +115,10 @@ export async function savePreferencesAction(_: FormState, f: FormData): Promise<
     const targetTitles = lines(str(f, "targetTitles", 2000)).slice(0, 10);
     if (!targetTitles.length) return "Add at least one target job title.";
     const seniority = str(f, "seniority") as Profile["seniority"];
-    if (!SENIORITY.includes(seniority)) return "Pick a seniority level.";
+    const seniorityMax = str(f, "seniorityMax") as Profile["seniority"];
+    if (!SENIORITY.includes(seniority) || !SENIORITY.includes(seniorityMax)) return "Pick the levels to apply for.";
+    if (SENIORITY.indexOf(seniorityMax) < SENIORITY.indexOf(seniority)) return "The highest level can't be below the lowest.";
+    const maxYearsAsked = Math.min(30, Math.max(0, Math.round(Number(f.get("maxYearsAsked")) || 8)));
     const employmentTypes = f.getAll("employmentTypes").map(String).filter((t): t is Profile["employmentTypes"][number] => (EMPLOYMENT_TYPES as readonly string[]).includes(t));
     if (!employmentTypes.length) return "Tick at least one employment type.";
     let locations: UserLocation[];
@@ -130,7 +134,7 @@ export async function savePreferencesAction(_: FormState, f: FormData): Promise<
     const auto = Math.min(100, Math.max(apply, Number(f.get("autoThreshold")) || 85));
     return {
       ...p,
-      targetTitles, seniority, employmentTypes, locations,
+      targetTitles, seniority, seniorityMax, maxYearsAsked, employmentTypes, locations,
       salaryFloor: { usd: money(f, "floorUsd"), gbp: money(f, "floorGbp") },
       thresholds: { apply, auto },
       auth: { usSponsorship: str(f, "usSponsorship") !== "no", canadaSponsorship: true },
@@ -238,10 +242,10 @@ export async function searchNowAction(): Promise<FormState> {
   revalidatePath("/");
   revalidatePath("/applications");
   const made = result.created.length;
-  const why = Object.entries(result.rejected).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${v} on ${k}`).join(", ");
+  const why = Object.entries(result.rejected).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${v} ${REJECT_LABELS[k] ?? k}`).join(", ");
   const skipped = result.skippedSources.length ? ` ${result.skippedSources.length} source(s) skipped: daily limit reached.` : "";
   const errors = result.sourceErrors.length ? ` ${result.sourceErrors.length} source(s) failed.` : "";
-  return { ok: true, message: `Checked ${result.fetched} jobs. ${made ? `${made} new match${made === 1 ? "" : "es"}.` : "No new matches."}${why ? ` Filtered out: ${why}.` : ""}${skipped}${errors}` };
+  return { ok: true, message: `Checked ${result.fetched} jobs. ${made ? `${made} new match${made === 1 ? "" : "es"}.` : "No new matches."}${why ? ` Of the rest, ${why}.` : ""}${skipped}${errors}` };
 }
 
 // ---------- settings ----------

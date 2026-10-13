@@ -51,7 +51,7 @@ describe("SR sources", () => {
       [boardUrl(boards[1])]: greenhouse,
       [boardUrl(boards[2])]: lever,
     });
-    const run = await fetchAll([...boards], { fetchImpl: impl, canFetch: async () => true, recordFetch: async () => {} });
+    const run = await fetchAll([...boards], { fetchImpl: impl, includeAggregators: false, canFetch: async () => true, recordFetch: async () => {} });
     expect(run.jobs).toHaveLength(3);
     expect(run.errors.map((e) => e.source)).toEqual(["remotive", "greenhouse:broken"]);
   });
@@ -61,5 +61,25 @@ describe("SR sources", () => {
   });
   test("HTML entities and tags become readable text", () => {
     expect(htmlToText("<p>R&amp;D &lt;b&gt;team&lt;/b&gt;</p><p>Second</p>")).toBe("R&D team\n\nSecond");
+  });
+});
+
+describe("SR aggregators", () => {
+  test("SR-06 Himalayas jobs are normalised: country limits become the location; pay is annualised; credited", async () => {
+    const { normaliseHimalayas } = await import("@/lib/sources");
+    const [j] = normaliseHimalayas({ jobs: [{ guid: "https://himalayas.app/companies/acme/jobs/ba-1", title: "Business Analyst", companyName: "Acme", locationRestrictions: ["United Kingdom", "Germany"], employmentType: "Full Time", minSalary: 40, maxSalary: 50, currency: "GBP", salaryPeriod: "hourly", description: "<p>Jira &amp; SQL</p>", applicationLink: "https://jobs.lever.co/acme/1", pubDate: 1760000000 }] });
+    expect(j).toMatchObject({ source: "himalayas", company: "Acme", location: "Remote - United Kingdom, Germany", remote: true, employmentType: "permanent", ats: "lever", url: "https://jobs.lever.co/acme/1" });
+    expect(j.salary).toEqual({ min: 80000, max: 100000, currency: "GBP" });
+    expect(j.description).toBe("Jira & SQL");
+    expect(j.attribution).toBe("Found on Himalayas: https://himalayas.app/companies/acme/jobs/ba-1");
+    expect(normaliseHimalayas({ jobs: [{ title: "X", companyName: "Y", locationRestrictions: [] }] })[0].location).toBe("Remote - Worldwide");
+  });
+  test("SR-07 Remote OK jobs are normalised, its legal notice is skipped, and each job is credited", async () => {
+    const { normaliseRemoteOk } = await import("@/lib/sources");
+    const jobs = normaliseRemoteOk([{ legal: "API Terms of Service" }, { id: "77", position: "Business Analyst", company: "Beta", location: "USA", description: "<b>BA</b>", tags: ["sql", "jira"], url: "https://remoteok.com/remote-jobs/77", apply_url: "https://job-boards.greenhouse.io/beta/jobs/9", salary_min: 90000, salary_max: 120000 }]);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({ source: "remoteok", title: "Business Analyst", location: "Remote - USA", ats: "greenhouse", salary: { min: 90000, max: 120000, currency: "USD" } });
+    expect(jobs[0].description).toContain("sql, jira");
+    expect(jobs[0].attribution).toBe("Found on Remote OK: https://remoteok.com/remote-jobs/77");
   });
 });

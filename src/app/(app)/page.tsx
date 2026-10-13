@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { dashboardCounts, getProfile, listApplications } from "@/lib/store";
+import { dashboardCounts, getProfile, lastSearch, listApplications } from "@/lib/store";
 import { Card, Empty, Score, StatusBadge, TextLink } from "@/components/ui";
+import { LastSearch } from "./LastSearch";
 import { RouteMap } from "./RouteMap";
 import { SearchNow } from "./SearchNow";
 
@@ -14,11 +15,12 @@ function greeting(now: Date) {
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
   const user = await requireUser();
   const db = await getDb();
-  const [profile, counts, waiting, recent, { welcome }] = await Promise.all([
+  const [profile, counts, waiting, recent, run, { welcome }] = await Promise.all([
     getProfile(db, user.id),
     dashboardCounts(db, user.id),
     listApplications(db, user.id, ["needs_action", "needs_approval"]),
     listApplications(db, user.id),
+    lastSearch(db, user.id),
     searchParams,
   ]);
   const firstName = profile.fullName.trim().split(/\s+/)[0];
@@ -55,6 +57,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </header>
 
       <RouteMap counts={counts} />
+      <LastSearch run={run} />
 
       {!setupDone && (
         <Card title="Finish setting up" className="mb-8 border-l-4 border-l-stamp">

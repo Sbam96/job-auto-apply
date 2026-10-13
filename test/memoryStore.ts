@@ -1,5 +1,5 @@
 // An in-memory store for testing whole search runs without a database.
-import type { NewApplication, PipelineStore } from "@/lib/pipeline";
+import type { NewApplication, PipelineStore, UserRunSummary } from "@/lib/pipeline";
 import type { Board } from "@/lib/sources";
 import type { Job, Profile } from "@/lib/types";
 
@@ -9,6 +9,8 @@ export class MemoryStore implements PipelineStore {
   fetches = new Map<string, number>();
   jobs = new Map<string, { id: number; job: Job }>();
   apps: (NewApplication & { id: number; day: string })[] = [];
+  runs = new Map<string, UserRunSummary>();
+  async recordRun(userId: string, summary: UserRunSummary) { this.runs.set(userId, summary); }
   day = "";
 
   async activeUsers() { return this.users.filter((u) => !u.profile.paused); }

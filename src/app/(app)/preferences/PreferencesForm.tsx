@@ -24,10 +24,20 @@ export function PreferencesForm({ profile: p }: { profile: Profile }) {
             <textarea id="targetTitles" name="targetTitles" rows={4} defaultValue={p.targetTitles.join("\n")} className="input" />
           </Field>
           <div className="space-y-4">
-            <Field label="Your level" hint="Roles at this level or one above are matched." htmlFor="seniority">
-              <select id="seniority" name="seniority" defaultValue={p.seniority} className="input">
-                {SENIORITY.map((s) => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Lowest level" htmlFor="seniority">
+                <select id="seniority" name="seniority" defaultValue={p.seniority} className="input">
+                  {SENIORITY.map((s) => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}
+                </select>
+              </Field>
+              <Field label="Highest level" htmlFor="seniorityMax">
+                <select id="seniorityMax" name="seniorityMax" defaultValue={p.seniorityMax} className="input">
+                  {SENIORITY.map((s) => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="Apply to roles asking for up to (years)" hint="Roles asking for more years than your CV shows still match, up to this limit." htmlFor="maxYearsAsked">
+              <input id="maxYearsAsked" name="maxYearsAsked" type="number" min={0} max={30} defaultValue={p.maxYearsAsked} className="input sm:w-32" />
             </Field>
             <fieldset>
               <legend className="mb-1.5 text-sm font-medium">Employment types</legend>

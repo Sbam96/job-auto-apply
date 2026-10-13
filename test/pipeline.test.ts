@@ -37,7 +37,7 @@ describe("search runs", () => {
   test("AP-01 / AP-02 strong matches on Greenhouse queue to submit; others wait for approval", async () => {
     const { store, impl } = setup([
       { id: 1, title: "Business Analyst", location: "Remote - UK" },
-      { id: 2, title: "Requirements Analyst", location: "Remote - United States", content: "Requirements analyst writing user stories and acceptance criteria in Jira and Confluence, SQL, agile teams, insurance. 3 years of experience." },
+      { id: 2, title: "Requirements Analyst", location: "Remote - United States", content: "Requirements analyst: user stories in Jira and Confluence, Salesforce, BPMN, SQL, insurance. 3 years of experience." },
     ]);
     await runSearch({ store, llm: null, now: NOW, fetchImpl: impl });
     const byRegion = Object.fromEntries(store.apps.map((a) => [a.region, a]));
@@ -70,6 +70,22 @@ describe("search runs", () => {
     board2.forEach((b, i) => { routes[boardUrl(b)] = gh([many[i]]); });
     await runSearch({ store, llm: null, now: NOW, fetchImpl: fakeFetch(routes).impl });
     expect(store.apps).toHaveLength(10);
+  });
+  test("MT-09 each search records, per user, how many jobs were checked and why the rest were filtered", async () => {
+    const { store, impl } = setup([
+      { id: 1, title: "Business Analyst", location: "Remote - UK" },
+      { id: 2, title: "Account Executive", location: "Remote - UK" },
+      { id: 3, title: "Business Analyst", location: "Berlin, Germany" },
+    ]);
+    await runSearch({ store, llm: null, now: NOW, fetchImpl: impl });
+    expect(store.runs.get("u1")).toMatchObject({ checked: 3, matched: 1, rejected: { title: 1, location: 1 } });
+  });
+  test("SR-06 SR-07 Himalayas is searched per target title, and Remote OK's feed is read, when available", async () => {
+    const { store } = setup([]);
+    const { impl, calls } = fakeFetch({ [boardUrl(board)]: { jobs: [] }, [REMOTIVE_URL]: { jobs: [] } });
+    await runSearch({ store, llm: null, now: NOW, fetchImpl: impl });
+    expect(calls).toContain("https://himalayas.app/jobs/api/search?q=business%20analyst&sort=recent");
+    expect(calls).toContain("https://remoteok.com/api");
   });
   test("a paused profile isn't searched for", async () => {
     const { store, impl } = setup([{ id: 1, title: "Business Analyst", location: "Remote - UK" }], { paused: true });

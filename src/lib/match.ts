@@ -37,11 +37,12 @@ export function seniorityOf(title: string): Seniority {
   return "mid";
 }
 
-// MT-03: at the baseline or one level above. Below it, or two or more above, is skipped.
-export function seniorityFits(jobLevel: Seniority, baseline: Seniority) {
+// MT-03: between the lowest and highest level the user picked (default mid to lead).
+export function seniorityFits(jobLevel: Seniority, min: Seniority, max: Seniority = min) {
   const j = SENIORITY.indexOf(jobLevel);
-  const b = SENIORITY.indexOf(baseline);
-  return j >= b && j <= b + 1;
+  const lo = SENIORITY.indexOf(min);
+  const hi = Math.max(lo, SENIORITY.indexOf(max));
+  return j >= lo && j <= hi;
 }
 
 // MT-05: exact target title, a similar title from the same family, or no match.
@@ -118,10 +119,13 @@ export function scoreJob(job: Job, profile: Profile, now: Date, titleKind: "exac
   const wanted = skillsIn(`${job.title} ${job.description}`, [...mine]);
   const matched = wanted.filter((s) => mine.has(s));
   const missing = wanted.filter((s) => !mine.has(s));
-  const skills = wanted.length ? Math.round((matched.length / wanted.length) * 45) : 27;
+  // Full marks once you match most of what a job asks for; a long wish-list of tools doesn't sink the score.
+  const enough = Math.max(3, Math.ceil(wanted.length * 0.6));
+  const skills = wanted.length ? Math.round(Math.min(1, matched.length / enough) * 45) : 27;
   const need = requiredYears(job.description);
   const have = yearsOfExperience(profile, now);
-  const experience = need == null ? 12 : have >= need ? 15 : have >= need - 1 ? 8 : 0;
+  // MT-08: roles asking for more than you have, but within your stretch limit, still score well.
+  const experience = need == null ? 12 : have >= need ? 15 : 11;
   const domainWords = ["insurance", "pensions", "wealth", "financial services", "banking", "public sector", "government", "data strategy", "regulatory", "compliance", "consulting"];
   const myText = `${profile.experience.map((r) => `${r.employer} ${r.title} ${r.bullets.filter((b) => b.status === "approved").map((b) => b.text).join(" ")}`).join(" ")} ${profile.summary}`.toLowerCase();
   const desc = job.description.toLowerCase();
@@ -137,7 +141,7 @@ export function dedupeKey(job: Pick<Job, "company" | "title">, region: Region): 
 }
 
 export type Evaluation =
-  | { pass: false; stage: "location" | "title" | "type" | "seniority" | "pay" | "score"; reason: string; score?: ScoreBreakdown }
+  | { pass: false; stage: "location" | "title" | "type" | "seniority" | "experience" | "pay" | "score"; reason: string; score?: ScoreBreakdown }
   | { pass: true; region: Region; mode: WorkMode; place: ParsedLocation; score: ScoreBreakdown; titleKind: "exact" | "similar"; key: string };
 
 // Every hard filter, then the score.
@@ -150,7 +154,9 @@ export function evaluate(job: Job, profile: Profile, now: Date): Evaluation {
   const type = employmentTypeOf(job);
   if (!profile.employmentTypes.includes(type)) return { pass: false, stage: "type", reason: `${type} not wanted` };
   const level = seniorityOf(job.title);
-  if (!seniorityFits(level, profile.seniority)) return { pass: false, stage: "seniority", reason: `${level} level` };
+  if (!seniorityFits(level, profile.seniority, profile.seniorityMax)) return { pass: false, stage: "seniority", reason: `${level} level` };
+  const need = requiredYears(job.description);
+  if (need != null && need > (profile.maxYearsAsked ?? 8)) return { pass: false, stage: "experience", reason: `asks for ${need}+ years` };
   if (!payFits(job, profile.salaryFloor)) return { pass: false, stage: "pay", reason: "below your pay floor" };
   const score = scoreJob(job, profile, now, titleKind);
   const threshold = profile.thresholds?.apply ?? APPLY_THRESHOLD;

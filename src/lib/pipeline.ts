@@ -35,7 +35,11 @@ export interface PipelineStore {
   hasApplication(userId: string, dedupeKey: string): Promise<boolean>;
   createdOn(userId: string, day: string): Promise<number>;
   createApplication(app: NewApplication): Promise<number>;
+  recordRun?(userId: string, summary: UserRunSummary): Promise<void>;
 }
+
+// What one search found for one user: shown on the dashboard so filtering is never a mystery.
+export interface UserRunSummary { at: string; checked: number; matched: number; rejected: Record<string, number>; sourceErrors: number; skippedSources: number }
 
 export interface RunResult {
   fetched: number;
@@ -47,13 +51,16 @@ export interface RunResult {
 
 export const londonDay = (now: Date) => now.toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
 
-export async function runSearch(deps: { store: PipelineStore; llm: LLM | null; now: Date; fetchImpl?: typeof fetch; includeRemotive?: boolean }): Promise<RunResult> {
+export async function runSearch(deps: { store: PipelineStore; llm: LLM | null; now: Date; fetchImpl?: typeof fetch; includeRemotive?: boolean; includeAggregators?: boolean }): Promise<RunResult> {
   const { store, llm, now } = deps;
   const day = londonDay(now);
   const boards = await store.allBoards();
+  const users = await store.activeUsers();
   const run = await fetchAll(boards, {
     fetchImpl: deps.fetchImpl,
     includeRemotive: deps.includeRemotive,
+    includeAggregators: deps.includeAggregators,
+    queries: users.flatMap((u) => u.profile.targetTitles),
     canFetch: async (key, source) => (await store.fetchCount(key, day)) < (SOURCE_LIMITS[source]?.perDay ?? 4), // SR-01
     recordFetch: (key) => store.recordFetch(key, day),
   });
@@ -63,15 +70,18 @@ export async function runSearch(deps: { store: PipelineStore; llm: LLM | null; n
   // Newest jobs first, so the daily cap goes on the freshest roles.
   const jobs = [...run.jobs].sort((a, b) => String(b.postedAt ?? "").localeCompare(String(a.postedAt ?? "")));
 
-  for (const { userId, profile } of await store.activeUsers()) {
+  for (const { userId, profile } of users) {
     let made = await store.createdOn(userId, day);
     const seen = new Set<string>();
+    const mine: Record<string, number> = {};
+    const reject = (stage: string) => { result.rejected[stage] = (result.rejected[stage] ?? 0) + 1; mine[stage] = (mine[stage] ?? 0) + 1; };
+    let matched = 0;
     for (const job of jobs) {
-      if (made >= DAILY_APPLY_CAP) break;
+      if (made >= DAILY_APPLY_CAP) { reject("daily limit"); continue; }
       const ev = evaluate(job, profile, now);
-      if (!ev.pass) { result.rejected[ev.stage] = (result.rejected[ev.stage] ?? 0) + 1; continue; }
+      if (!ev.pass) { reject(ev.stage); continue; }
       // MT-07: the same role twice in one run, or already applied to.
-      if (seen.has(ev.key) || (await store.hasApplication(userId, ev.key))) { result.rejected.duplicate = (result.rejected.duplicate ?? 0) + 1; continue; }
+      if (seen.has(ev.key) || (await store.hasApplication(userId, ev.key))) { reject("duplicate"); continue; }
       seen.add(ev.key);
       const jobId = ids.get(`${job.source}:${job.sourceId}`);
       if (!jobId) continue;
@@ -95,8 +105,10 @@ export async function runSearch(deps: { store: PipelineStore; llm: LLM | null; n
         flags, tailored,
       });
       made += 1;
+      matched += 1;
       result.created.push({ userId, applicationId, route, title: job.title, company: job.company });
     }
+    await store.recordRun?.(userId, { at: now.toISOString(), checked: jobs.length, matched, rejected: mine, sourceErrors: run.errors.length, skippedSources: run.skipped.length });
   }
   return result;
 }

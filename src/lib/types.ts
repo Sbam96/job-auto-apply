@@ -46,7 +46,9 @@ export interface Profile {
   portfolio: string;
   summary: string;
   targetTitles: string[];
-  seniority: Seniority;
+  seniority: Seniority; // lowest level to apply for
+  seniorityMax: Seniority; // highest level to apply for
+  maxYearsAsked: number; // skip roles asking for more years than this (MT-08)
   employmentTypes: EmploymentType[];
   salaryFloor: { usd: number | null; gbp: number | null };
   expectedSalary: { usd: number | null; gbp: number | null };
@@ -72,7 +74,7 @@ export interface Salary {
 
 // A job from any source, in one shape (SR-01 to SR-04).
 export interface Job {
-  source: "remotive" | "greenhouse" | "lever" | "ashby";
+  source: "remotive" | "himalayas" | "remoteok" | "greenhouse" | "lever" | "ashby";
   sourceId: string;
   company: string;
   title: string;
@@ -84,5 +86,5 @@ export interface Job {
   salary: Salary | null;
   postedAt: string | null;
   ats: "greenhouse" | "lever" | "ashby" | null;
-  attribution: string | null; // SR-01: Remotive requires credit and a link back
+  attribution: string | null; // SR-01, SR-06, SR-07: aggregators require credit and a link back
 }

@@ -107,6 +107,11 @@ CREATE TABLE IF NOT EXISTS report_runs (
   day DATE NOT NULL,
   PRIMARY KEY (user_id, day)
 );
+CREATE TABLE IF NOT EXISTS search_runs (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  summary JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS mail_outbox (
   id SERIAL PRIMARY KEY,
   to_email TEXT NOT NULL,

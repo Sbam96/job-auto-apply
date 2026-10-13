@@ -11,6 +11,8 @@ export const DAILY_APPLY_CAP = 10; // v1 target: 5 to 10 applications a day
 // SR-01: Remotive asks for at most four fetches a day.
 export const SOURCE_LIMITS: Record<string, { perDay: number }> = {
   remotive: { perDay: 4 },
+  himalayas: { perDay: 8 }, // per search term
+  remoteok: { perDay: 4 },
   greenhouse: { perDay: 8 },
   lever: { perDay: 8 },
   ashby: { perDay: 8 },

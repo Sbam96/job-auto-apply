@@ -3,7 +3,7 @@ import { VERIFY_TOKEN_HOURS, SESSION_DAYS, type Status } from "./config";
 import { withDefaults } from "./cv";
 import type { Db } from "./db";
 import { checkPassword, hashPassword, hashToken, newToken, normaliseEmail } from "./auth";
-import type { NewApplication, PipelineStore } from "./pipeline";
+import type { NewApplication, PipelineStore, UserRunSummary } from "./pipeline";
 import { STARTER_BOARDS } from "./seeds";
 import type { Board } from "./sources";
 import { canMove } from "./status";
@@ -218,6 +218,11 @@ export async function dashboardCounts(db: Db, userId: string) {
   return Object.fromEntries(rows.map((r) => [r.status, Number(r.n)])) as Partial<Record<Status, number>>;
 }
 
+export async function lastSearch(db: Db, userId: string): Promise<UserRunSummary | null> {
+  const { rows } = await db.query<{ summary: UserRunSummary }>("SELECT summary FROM search_runs WHERE user_id = $1", [userId]);
+  return rows[0]?.summary ?? null;
+}
+
 // ---------- data rights (DP-01, DP-02) ----------
 
 export async function exportAll(db: Db, userId: string) {
@@ -287,6 +292,10 @@ export class PgPipelineStore implements PipelineStore {
   async createdOn(userId: string, day: string) {
     const { rows } = await this.db.query<{ n: string }>("SELECT count(*) AS n FROM applications WHERE user_id = $1 AND created_day = $2", [userId, day]);
     return Number(rows[0].n);
+  }
+
+  async recordRun(userId: string, summary: UserRunSummary) {
+    await this.db.query("INSERT INTO search_runs (user_id, summary, updated_at) VALUES ($1, $2, now()) ON CONFLICT (user_id) DO UPDATE SET summary = EXCLUDED.summary, updated_at = now()", [userId, JSON.stringify(summary)]);
   }
 
   async createApplication(a: NewApplication) {

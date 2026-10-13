@@ -135,6 +135,63 @@ export function normaliseAshby(data: { jobs?: unknown[] }, board: Board): Job[] 
   });
 }
 
+// ---------- Himalayas (SR-06) ----------
+const HIMALAYAS_TYPES: [RegExp, EmploymentType][] = [[/intern/i, "internship"], [/part/i, "part-time"], [/temp|fixed/i, "fixed-term"], [/contract|freelance/i, "contract"], [/full/i, "permanent"]];
+const PER_YEAR: Record<string, number> = { annual: 1, yearly: 1, monthly: 12, fortnightly: 26, weekly: 52, hourly: 2000 };
+
+export function normaliseHimalayas(data: { jobs?: unknown[] }): Job[] {
+  return (data.jobs ?? []).map((raw) => {
+    const j = raw as { guid?: string; title: string; companyName: string; companySlug?: string; locationRestrictions?: string[]; employmentType?: string; minSalary?: number | null; maxSalary?: number | null; currency?: string; salaryPeriod?: string; description?: string; excerpt?: string; applicationLink?: string; pubDate?: number | string };
+    const where = j.locationRestrictions?.length ? j.locationRestrictions.join(", ") : "Worldwide";
+    const factor = PER_YEAR[String(j.salaryPeriod ?? "annual").toLowerCase()] ?? 1;
+    const pay = (n: number | null | undefined) => (n == null ? null : Math.round(n * factor));
+    const link = String(j.guid ?? j.applicationLink ?? "");
+    const pub = typeof j.pubDate === "number" ? new Date(j.pubDate * (j.pubDate < 1e12 ? 1000 : 1)).toISOString() : j.pubDate ? String(j.pubDate) : null;
+    return {
+      source: "himalayas",
+      sourceId: link || `${j.companySlug}:${j.title}`,
+      company: j.companyName,
+      title: j.title,
+      location: `Remote - ${where}`,
+      remote: true,
+      url: j.applicationLink || link,
+      description: htmlToText(j.description ?? j.excerpt ?? ""),
+      employmentType: HIMALAYAS_TYPES.find(([re]) => re.test(j.employmentType ?? ""))?.[1] ?? null,
+      salary: j.minSalary != null || j.maxSalary != null ? { min: pay(j.minSalary), max: pay(j.maxSalary), currency: j.currency ?? null } : null,
+      postedAt: pub,
+      ats: atsFromUrl(j.applicationLink ?? ""),
+      attribution: `Found on Himalayas: ${link || j.applicationLink}`,
+    } satisfies Job;
+  });
+}
+
+export const himalayasUrl = (q: string) => `https://himalayas.app/jobs/api/search?q=${encodeURIComponent(q)}&sort=recent`;
+
+// ---------- Remote OK (SR-07) ----------
+export function normaliseRemoteOk(data: unknown[]): Job[] {
+  return (data ?? []).filter((raw) => (raw as { id?: unknown }).id && (raw as { position?: unknown }).position).map((raw) => {
+    const j = raw as { id: string | number; position: string; company: string; location?: string; description?: string; url?: string; apply_url?: string; salary_min?: number; salary_max?: number; date?: string; tags?: string[] };
+    const url = String(j.url ?? "");
+    return {
+      source: "remoteok",
+      sourceId: String(j.id),
+      company: j.company,
+      title: j.position,
+      location: `Remote - ${j.location?.trim() || "Worldwide"}`,
+      remote: true,
+      url: j.apply_url || url,
+      description: htmlToText(`${j.description ?? ""}\n${(j.tags ?? []).join(", ")}`),
+      employmentType: null,
+      salary: j.salary_min || j.salary_max ? { min: num(j.salary_min), max: num(j.salary_max), currency: "USD" } : null,
+      postedAt: j.date ?? null,
+      ats: atsFromUrl(j.apply_url ?? ""),
+      attribution: `Found on Remote OK: ${url}`,
+    } satisfies Job;
+  });
+}
+
+export const REMOTEOK_URL = "https://remoteok.com/api";
+
 export const boardUrl = (b: Board) =>
   b.ats === "greenhouse" ? `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(b.board)}/jobs?content=true`
   : b.ats === "lever" ? `https://api.lever.co/v0/postings/${encodeURIComponent(b.board)}?mode=json`
@@ -158,11 +215,18 @@ export interface SourceRun { jobs: Job[]; errors: { source: string; error: strin
 
 export async function fetchAll(
   boards: Board[],
-  opts: { fetchImpl?: FetchLike; canFetch: (key: string, source: string) => Promise<boolean>; recordFetch: (key: string, source: string) => Promise<void>; includeRemotive?: boolean },
+  opts: { fetchImpl?: FetchLike; canFetch: (key: string, source: string) => Promise<boolean>; recordFetch: (key: string, source: string) => Promise<void>; includeRemotive?: boolean; includeAggregators?: boolean; queries?: string[] },
 ): Promise<SourceRun> {
   const out: SourceRun = { jobs: [], errors: [], skipped: [] };
   const tasks: { key: string; source: string; run: () => Promise<Job[]> }[] = [];
   if (opts.includeRemotive !== false) tasks.push({ key: "remotive", source: "remotive", run: () => fetchRemotive(opts.fetchImpl) });
+  if (opts.includeAggregators !== false) {
+    // Himalayas is searched once per target title; Remote OK publishes one feed.
+    for (const q of [...new Set((opts.queries ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 5)) {
+      tasks.push({ key: `himalayas:${q}`, source: "himalayas", run: async () => normaliseHimalayas(await getJson(opts.fetchImpl ?? fetch, himalayasUrl(q))) });
+    }
+    tasks.push({ key: "remoteok", source: "remoteok", run: async () => normaliseRemoteOk(await getJson(opts.fetchImpl ?? fetch, REMOTEOK_URL)) });
+  }
   for (const b of boards) tasks.push({ key: `${b.ats}:${b.board}`, source: b.ats, run: () => fetchBoard(b, opts.fetchImpl) });
   for (const t of tasks) {
     if (!(await opts.canFetch(t.key, t.source))) { out.skipped.push(t.key); continue; }
