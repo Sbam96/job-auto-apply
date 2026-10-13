@@ -23,10 +23,10 @@ export function Nav({ badge }: { badge: number }) {
             key={l.href}
             href={l.href}
             aria-current={active ? "page" : undefined}
-            className={`flex items-center justify-between whitespace-nowrap rounded-lg px-3 py-2 text-sm transition ${active ? "bg-accent-soft font-medium text-accent" : "text-muted hover:bg-canvas hover:text-ink"}`}
+            className={`flex items-center justify-between whitespace-nowrap rounded-lg border-l-4 px-3 py-2 text-sm transition-colors ${active ? "border-accent bg-surface font-semibold text-ink" : "border-transparent text-muted hover:text-ink"}`}
           >
             {l.label}
-            {l.href === "/applications" && badge > 0 && <span className="ml-2 rounded-full bg-warn-soft px-2 text-xs font-semibold text-warn" title="Waiting for you">{badge}</span>}
+            {l.href === "/applications" && badge > 0 && <span className="ml-2 rounded-full bg-red px-2 text-xs font-bold text-white" title="Waiting for you">{badge}</span>}
           </Link>
         );
       })}

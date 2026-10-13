@@ -20,7 +20,7 @@ async function login(page: Page) {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
 }
 
 test("AU-01 a short password is refused", async ({ page }) => {
@@ -52,7 +52,7 @@ test("AU-02 the app can't be used until the email is verified, then it can", asy
   await page.goto("/cv");
   await expect(page).toHaveURL(/\/check-email/);
   await page.goto(await verifyLink(page, email));
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(Morning|Afternoon|Evening|Up late)\.$/);
   await expect(page.getByRole("heading", { name: "Finish setting up" })).toBeVisible();
 });
 
@@ -236,7 +236,7 @@ test("A11Y main pages have no serious accessibility problems", async ({ page }) 
     await page.goto(path);
     const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     const serious = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-    expect(serious.map((v) => `${path}: ${v.id}`)).toEqual([]);
+    expect(serious.map((v) => `${path}: ${v.id} on ${v.nodes.slice(0, 3).map((n) => `${n.target.join(" ")} (${(n.failureSummary ?? "").split("\n").slice(1).join(" ").trim()})`).join("; ")}`)).toEqual([]);
   }
 });
 

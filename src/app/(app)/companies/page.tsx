@@ -20,7 +20,7 @@ export default async function CompaniesPage() {
               <li key={b.id} className="flex items-center justify-between gap-4 py-3">
                 <div>
                   <p className="font-medium">{b.company}</p>
-                  <p className="text-xs text-muted">{ATS_NAME[b.ats]} · {b.board}</p>
+                  <p className="text-xs text-muted">{ATS_NAME[b.ats]} board &ldquo;{b.board}&rdquo;</p>
                 </div>
                 <form action={removeBoardAction}><input type="hidden" name="id" value={b.id} /><button className="text-sm text-muted hover:text-bad">Remove</button></form>
               </li>

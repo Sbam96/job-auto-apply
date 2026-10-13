@@ -34,7 +34,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
           <table className="w-full text-sm">
-            <thead className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+            <thead className="border-b border-line text-left text-sm text-muted">
               <tr><th className="px-4 py-3 font-medium">Role</th><th className="px-4 py-3 font-medium">Location</th><th className="px-4 py-3 font-medium">Score</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 font-medium">Updated</th></tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -44,7 +44,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                     <Link href={`/applications/${a.id}`} className="font-medium hover:text-accent">{a.title}</Link>
                     <p className="text-muted">{a.company}{a.flags.length > 0 && <span className="ml-2 text-warn" title={a.flags.join("\n")}>⚑ {a.flags.length} note{a.flags.length > 1 ? "s" : ""}</span>}</p>
                   </td>
-                  <td className="px-4 py-3 text-muted">{a.region} · {a.mode}</td>
+                  <td className="px-4 py-3 text-muted">{a.region}, {a.mode}</td>
                   <td className="px-4 py-3"><Score value={a.score} /></td>
                   <td className="px-4 py-3"><StatusBadge status={a.status} /></td>
                   <td className="whitespace-nowrap px-4 py-3 text-muted">{a.updated_at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</td>

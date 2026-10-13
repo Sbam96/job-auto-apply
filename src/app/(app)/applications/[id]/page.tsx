@@ -30,7 +30,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
     <>
       <PageHeader
         title={app.title}
-        intro={`${app.company} · ${app.location}`}
+        intro={`${app.company}, ${app.location}`}
         action={<div className="flex items-center gap-3"><Score value={app.score} /><StatusBadge status={app.status} /></div>}
       />
 
@@ -122,9 +122,9 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             <ol className="space-y-2 text-xs text-muted">
               {history.map((e, i) => {
                 const d = e.detail as { from?: string; to?: string; note?: string } | null;
-                return <li key={i}><span className="text-ink">{e.created_at.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span> · {e.kind === "status" ? `${d?.from} → ${d?.to}${d?.note ? `: ${d.note}` : ""}` : e.kind.replace("_", " ")}</li>;
+                return <li key={i}><span className="block text-ink">{e.created_at.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>{e.kind === "status" ? `${d?.from} → ${d?.to}${d?.note ? `: ${d.note}` : ""}` : e.kind.replace("_", " ")}</li>;
               })}
-              {sent.map((s, i) => <li key={`s${i}`}><span className="text-ink">{new Date(s.sent_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span> · submitted to {s.target_url}</li>)}
+              {sent.map((s, i) => <li key={`s${i}`}><span className="block text-ink">{new Date(s.sent_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>submitted to {s.target_url}</li>)}
             </ol>
           </Card>
         </div>
