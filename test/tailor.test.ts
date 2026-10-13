@@ -109,3 +109,29 @@ describe("TL tailoring safeguards", () => {
     expect(t.roles.find((r) => r.id === "r1")!.bullets[0].sourceId).toBe("b3");
   });
 });
+
+describe("PR-02 one box of bullets", () => {
+  const ids = (() => { let i = 0; return () => `n${++i}`; })();
+  test("PR-02 one bullet per line; dashes, dots and numbering are stripped; blank lines ignored", async () => {
+    const { bulletsFromText } = await import("@/lib/cv");
+    const out = bulletsFromText("- Wrote user stories\n• Ran workshops\n\n3. Led UAT\n  Mapped processes  ", [], ids);
+    expect(out.map((b) => b.text)).toEqual(["Wrote user stories", "Ran workshops", "Led UAT", "Mapped processes"]);
+    expect(out.every((b) => b.status === "approved" && b.source === "user")).toBe(true);
+  });
+  test("PR-02 unchanged lines keep their identity when the box is edited", async () => {
+    const { bulletsFromText } = await import("@/lib/cv");
+    const before = bulletsFromText("Wrote user stories\nRan workshops", [], ids);
+    const after = bulletsFromText("Ran workshops\nWrote user stories\nLed UAT", before, ids);
+    expect(after[0].id).toBe(before[1].id);
+    expect(after[1].id).toBe(before[0].id);
+    expect(after[2].id).not.toBe(before[0].id);
+  });
+  test("PR-07 the project or department shows on the tailored CV under the employer", async () => {
+    const { cvHtml } = await import("@/lib/render");
+    const p = profile();
+    p.experience[0].team = "Claims Operations";
+    const t = baselineTailor(p, job());
+    expect(t.roles.find((r) => r.id === "r1")!.team).toBe("Claims Operations");
+    expect(cvHtml(p, t)).toContain("<p>Claims Operations</p>");
+  });
+});

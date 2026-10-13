@@ -21,7 +21,7 @@ export function cvHtml(p: Profile, t: Tailored): string {
 <p class="contact">${contact}</p>
 ${t.summary ? `<h2>Summary</h2><p>${esc(t.summary)}</p>` : ""}
 <h2>Experience</h2>
-${t.roles.map((r) => `<div class="role"><p><strong>${esc(r.title)}</strong>, ${esc(r.employer)}</p><p class="dates">${formatMonth(r.start)} to ${formatMonth(r.end)}</p><ul>${r.bullets.map((b) => `<li>${esc(b.text)}</li>`).join("")}</ul></div>`).join("\n")}
+${t.roles.map((r) => `<div class="role"><p><strong>${esc(r.title)}</strong>, ${esc(r.employer)}</p>${r.team ? `<p>${esc(r.team)}</p>` : ""}<p class="dates">${formatMonth(r.start)} to ${formatMonth(r.end)}</p><ul>${r.bullets.map((b) => `<li>${esc(b.text)}</li>`).join("")}</ul></div>`).join("\n")}
 ${t.skills.length ? `<h2>Skills</h2><p>${t.skills.map(esc).join(", ")}</p>` : ""}
 ${p.education.length ? `<h2>Education</h2>${p.education.map((e) => `<p>${esc(e.qualification)}, ${esc(e.institution)}${e.year ? ` (${esc(e.year)})` : ""}</p>`).join("")}` : ""}
 ${p.certifications.length ? `<h2>Certifications</h2><p>${p.certifications.map(esc).join(", ")}</p>` : ""}

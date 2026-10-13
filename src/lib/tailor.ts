@@ -12,6 +12,7 @@ export interface TailoredRole {
   id: string;
   title: string;
   employer: string;
+  team?: string;
   start: string;
   end: string | null;
   bullets: { sourceId: string; text: string }[];
@@ -55,7 +56,7 @@ function relevance(text: string, jobSkills: string[]) {
 export function baselineTailor(profile: Profile, job: Job): Tailored {
   const jobSkills = skillsIn(`${job.title} ${job.description}`, usableSkills(profile));
   const roles = orderedRoles(profile.experience).map((r) => ({
-    id: r.id, title: r.title, employer: r.employer, start: r.start, end: r.end,
+    id: r.id, title: r.title, employer: r.employer, team: r.team || undefined, start: r.start, end: r.end,
     bullets: approvedBullets(r)
       .map((b, i) => ({ b, i, score: relevance(b.text, jobSkills) }))
       .sort((x, y) => y.score - x.score || x.i - y.i)
@@ -155,6 +156,7 @@ export function cvText(profile: Profile, t: Tailored): string {
   lines.push("EXPERIENCE");
   for (const r of t.roles) {
     lines.push(`${r.title}, ${r.employer} (${r.start} to ${r.end ?? "present"})`);
+    if (r.team) lines.push(r.team);
     for (const b of r.bullets) lines.push(`- ${b.text}`);
     lines.push("");
   }

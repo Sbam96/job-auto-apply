@@ -65,6 +65,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
               {t.roles.map((r) => (
                 <div key={r.id}>
                   <p className="font-medium">{r.title}, {r.employer}</p>
+                  {r.team && <p className="text-sm">{r.team}</p>}
                   <p className="text-xs text-muted">{formatMonth(r.start)} to {formatMonth(r.end)}</p>
                   <ul className="mt-1 list-disc space-y-1 pl-5">{r.bullets.map((b) => <li key={b.sourceId}>{b.text}</li>)}</ul>
                 </div>

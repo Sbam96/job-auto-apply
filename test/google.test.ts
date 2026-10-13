@@ -40,24 +40,25 @@ beforeAll(async () => { if (URL_DB) db = await openDb(URL_DB); });
 afterAll(async () => { if (db) await db.close(); });
 
 d("AU-05 Google accounts", () => {
+  const run = Date.now().toString(36); // unique per run, so leftover rows never collide
   test("AU-05 a first Google sign-in creates a verified account with the name filled in", async () => {
-    const { user, created } = await store.googleUser(db, { sub: "g-new", email: "newperson@gmail.com", name: "New Person" });
+    const { user, created } = await store.googleUser(db, { sub: `g-new-${run}`, email: `newperson-${run}@gmail.com`, name: "New Person" });
     expect(created).toBe(true);
-    expect((await store.login(db, "newperson@gmail.com", "anything at all")) ).toBeNull(); // no known password
+    expect((await store.login(db, `newperson-${run}@gmail.com`, "anything at all")) ).toBeNull(); // no known password
     const { rows } = await db.query("SELECT verified_at FROM users WHERE id = $1", [user.id]);
     expect(rows[0].verified_at).not.toBeNull();
     expect((await store.getProfile(db, user.id)).fullName).toBe("New Person");
     expect((await store.listBoards(db, user.id)).length).toBeGreaterThan(0);
   });
   test("AU-05 signing in again finds the same account", async () => {
-    const a = await store.googleUser(db, { sub: "g-new", email: "newperson@gmail.com", name: "New Person" });
+    const a = await store.googleUser(db, { sub: `g-new-${run}`, email: `newperson-${run}@gmail.com`, name: "New Person" });
     expect(a.created).toBe(false);
   });
   test("AU-05 an existing email-and-password account is linked, and verified, by Google sign-in", async () => {
-    const { user } = await store.createUser(db, "linkme@gmail.com", "a long enough password");
-    const g = await store.googleUser(db, { sub: "g-link", email: "LinkMe@gmail.com", name: "" });
+    const { user } = await store.createUser(db, `linkme-${run}@gmail.com`, "a long enough password");
+    const g = await store.googleUser(db, { sub: `g-link-${run}`, email: `LinkMe-${run}@gmail.com`, name: "" });
     expect(g.created).toBe(false);
     expect(g.user.id).toBe(user.id);
-    expect((await store.login(db, "linkme@gmail.com", "a long enough password"))!.verifiedAt).not.toBeNull();
+    expect((await store.login(db, `linkme-${run}@gmail.com`, "a long enough password"))!.verifiedAt).not.toBeNull();
   });
 });

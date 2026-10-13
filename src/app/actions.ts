@@ -144,9 +144,9 @@ export async function saveCvAction(_: FormState, f: FormData): Promise<FormState
     try {
       const data = JSON.parse(String(f.get("cv") ?? "{}")) as { summary: string; experience: Role[]; education: Profile["education"]; certifications: string[]; skills: Skill[] };
       const experience = (data.experience ?? []).slice(0, 30).map((r) => ({
-        id: String(r.id), title: String(r.title).slice(0, 120), employer: String(r.employer).slice(0, 120), location: String(r.location ?? "").slice(0, 120),
+        id: String(r.id), title: String(r.title).slice(0, 120), employer: String(r.employer).slice(0, 120), team: String(r.team ?? "").trim().slice(0, 120), location: String(r.location ?? "").slice(0, 120),
         start: /^\d{4}-\d{2}$/.test(r.start) ? r.start : "", end: r.end && /^\d{4}-\d{2}$/.test(r.end) ? r.end : null,
-        bullets: (r.bullets ?? []).slice(0, 40).map((b) => ({ id: String(b.id), text: String(b.text).slice(0, 500), status: b.status, source: b.source })).filter((b) => b.text.trim()),
+        bullets: (r.bullets ?? []).slice(0, 40).map((b) => ({ id: String(b.id), text: String(b.text).trim().slice(0, 500), status: b.status, source: b.source })).filter((b) => b.text && (b.status === "approved" || b.status === "pending")),
       }));
       if (experience.some((r) => !r.title || !r.employer || !r.start)) return "Every role needs a title, employer and start month.";
       const skills = new Map<string, Skill>();

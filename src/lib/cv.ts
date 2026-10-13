@@ -1,6 +1,6 @@
 // The master CV: defaults, ordering and what the app may use from it (PR-01 to PR-05, TL-03).
 
-import type { Profile, Role } from "./types";
+import type { Bullet, Profile, Role } from "./types";
 
 export function emptyProfile(): Profile {
   return {
@@ -58,6 +58,23 @@ const ym = (s: string | null) => (s ? s : "9999-12"); // current role sorts firs
 export function orderedRoles(roles: Role[]): Role[] {
   return [...roles].sort((a, b) => ym(b.end).localeCompare(ym(a.end)) || b.start.localeCompare(a.start));
 }
+
+// The CV editor takes a role's bullets as one block of text, one bullet per line.
+// Leading "-", "•", "*" or numbering is stripped; a line that's unchanged keeps its id.
+export function bulletsFromText(text: string, previous: Bullet[], newId: () => string): Bullet[] {
+  const pool = previous.filter((b) => b.status === "approved");
+  return String(text ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*(?:[-•*·▪–]|\d+[.)])\s*/, "").trim())
+    .filter(Boolean)
+    .map((line) => {
+      const i = pool.findIndex((b) => b.text === line);
+      const keep = i >= 0 ? pool.splice(i, 1)[0] : null;
+      return keep ?? { id: newId(), text: line, status: "approved" as const, source: "user" as const };
+    });
+}
+
+export const bulletsToText = (bullets: Bullet[]) => bullets.filter((b) => b.status === "approved").map((b) => b.text).join("\n");
 
 // PR-02: only approved bullets are ever used.
 export function approvedBullets(role: Role) {

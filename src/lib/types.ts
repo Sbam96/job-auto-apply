@@ -14,6 +14,7 @@ export interface Role {
   id: string;
   title: string;
   employer: string;
+  team?: string; // optional project or department
   location: string;
   start: string; // YYYY-MM
   end: string | null; // null = current

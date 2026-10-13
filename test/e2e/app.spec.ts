@@ -106,8 +106,7 @@ test("PR-01 work history is shown newest first after saving", async ({ page }) =
     await role.getByLabel("Employer").fill(employer);
     await role.getByLabel("Start").fill(start);
     if (end) await role.getByLabel("End").fill(end);
-    await role.getByRole("button", { name: "+ Add bullet" }).click();
-    await role.getByLabel("Bullet").last().fill(`Wrote user stories in Jira at ${employer}`);
+    await role.getByLabel("Responsibilities and achievements").fill(`- Wrote user stories in Jira at ${employer}\n• Ran stakeholder workshops at ${employer}`);
   };
   await addRole("Analyst", "Firstco", "2018-09", "2022-12");
   await addRole("Business Analyst", "Insureco", "2023-01", "2026-06");
@@ -117,6 +116,18 @@ test("PR-01 work history is shown newest first after saving", async ({ page }) =
   await page.reload();
   const employers = await page.locator("[data-role]").evaluateAll((els) => els.map((e) => (e.querySelector('input[id^="e-"]') as HTMLInputElement).value));
   expect(employers).toEqual(["Consultco", "Insureco", "Firstco"]);
+  await expect(page.locator("[data-role]").nth(1).getByLabel("Responsibilities and achievements")).toHaveValue("Wrote user stories in Jira at Insureco\nRan stakeholder workshops at Insureco");
+});
+
+test("PR-07 a role can record its project or department", async ({ page }) => {
+  await login(page);
+  await page.goto("/cv");
+  const role = page.locator("[data-role]").first();
+  await role.getByLabel("Project or department (optional)").fill("Data Strategy programme");
+  await page.getByRole("button", { name: "Save CV" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await page.reload();
+  await expect(page.locator("[data-role]").first().getByLabel("Project or department (optional)")).toHaveValue("Data Strategy programme");
 });
 
 test("PR-03 skills bank: ticked items are kept separately from CV skills", async ({ page }) => {
