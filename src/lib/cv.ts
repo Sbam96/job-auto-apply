@@ -37,6 +37,7 @@ export function emptyProfile(): Profile {
     thresholds: { apply: 75 },
     paused: false,
     blockedCompanies: [],
+    savedAnswers: [],
     digest: { every: 1, hour: 8 },
   };
 }
@@ -54,6 +55,7 @@ export function withDefaults(p: Partial<Profile> | null | undefined): Profile {
     selfId: { ...base.selfId, ...(p.selfId ?? {}) },
     thresholds: { apply: p.thresholds?.apply ?? base.thresholds.apply },
     blockedCompanies: Array.isArray(p.blockedCompanies) ? p.blockedCompanies : [],
+    savedAnswers: Array.isArray(p.savedAnswers) ? p.savedAnswers : [],
     digest: { ...base.digest, ...(p.digest ?? {}) },
   };
 }

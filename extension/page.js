@@ -120,9 +120,10 @@
     return new File([bytes], f.name, { type: f.type || "application/pdf" });
   }
 
+  const COLOURS = { ok: "2px solid #176844", todo: "3px solid #d7263d", drafted: "3px solid #f2b705" };
   function mark(el, ok) {
     const target = el.type === "file" || el.type === "radio" ? (el.closest("fieldset, label, div") ?? el) : el;
-    target.style.outline = ok ? "2px solid #176844" : "3px solid #d7263d";
+    target.style.outline = COLOURS[ok === true ? "ok" : ok === false ? "todo" : ok];
     target.style.outlineOffset = "2px";
     if (!ok) target.setAttribute("data-jaa-todo", "1");
   }
@@ -188,11 +189,42 @@
     for (const u of plan.unresolved) {
       const f = fields.find((x) => x.label === u.label);
       const el = f && document.querySelector(`[data-jaa="${f.marker}"]`);
-      if (el) mark(el, false);
+      if (el) { mark(el, false); if (!todo.some((t) => t.label === f.label)) todo.push(f); }
     }
     document.querySelector("[data-jaa-todo]")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return { done, failed };
   }
 
-  window.__jaa = { readPage, scan, fill, hasCaptcha };
+  // EX-07: put a drafted answer into one field, outlined in amber so you check it.
+  function put(label, value) {
+    const f = fields.find((x) => x.label === label);
+    const el = f && document.querySelector(`[data-jaa="${f.marker}"]`);
+    if (!el) return false;
+    setValue(el, value);
+    mark(el, "drafted");
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    return true;
+  }
+
+  // EX-08: the questions it couldn't answer that you've since answered yourself (not essays or files).
+  const todo = [];
+  function answered() {
+    const out = [];
+    for (const f of todo) {
+      if (f.type === "textarea" || f.type === "file") continue;
+      const el = document.querySelector(`[data-jaa="${f.marker}"]`);
+      if (!el) continue;
+      let value = "";
+      if (f.type === "radio") {
+        const r = [...document.querySelectorAll(`input[type=radio][name="${CSS.escape(f.name)}"]`)].find((x) => x.checked);
+        value = r ? labelFor(r) : "";
+      } else if (f.type === "checkbox") value = el.checked ? "Yes" : "";
+      else if (el.tagName === "SELECT") value = el.selectedIndex > 0 ? clean(el.options[el.selectedIndex].text) : "";
+      else value = clean(el.value);
+      if (value) out.push({ question: f.label, answer: value });
+    }
+    return out;
+  }
+
+  window.__jaa = { readPage, scan, fill, hasCaptcha, put, answered };
 })();

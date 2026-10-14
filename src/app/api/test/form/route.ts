@@ -21,6 +21,8 @@ export async function GET(req: Request) {
     <label><input type="radio" name="sponsor" value="0" required> No</label>
   </fieldset>
   <label for="gender">Gender</label><select id="gender"><option>Select...</option><option>Male</option><option>Female</option><option>Decline To Self Identify</option></select>
+  <label for="jira">How many years have you used Jira? *</label>
+  <select id="jira" required><option>Select...</option><option>Less than 1</option><option>1-3</option><option>3+</option></select>
   <label for="why">Why do you want to work at ${co}? *</label><textarea id="why" required></textarea>
   <button type="submit">Submit application</button>
 </form></body></html>`;

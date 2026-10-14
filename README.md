@@ -54,7 +54,10 @@ Chrome go to `chrome://extensions`, turn on Developer mode and choose **Load unp
 connection key in Settings and paste it into the extension. On any application page, click the
 icon: it recognises the match, fills your details, work-authorisation answers and diversity
 questions, attaches the tailored CV PDF, and outlines anything left for you in red. It never
-submits; press **Mark as applied** in the extension afterwards. The code is in `extension/`.
+submits; press **Mark as applied** in the extension afterwards. On a job the app didn't find,
+**Make a match from this page** reads the job and makes the tailored CV first. Essay questions get
+**Draft an answer** (from your CV only, anything not on it flagged). Questions you answer yourself
+can be remembered for next time (Details & answers lists them). The code is in `extension/`.
 
 What's kept: untouched matches expire after 30 days; dismissed and expired ones are deleted after
 3 months; applied ones, with their documents, after 6 months. A role you applied to isn't matched

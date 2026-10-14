@@ -4,6 +4,7 @@
 
 import type { Profile } from "./types";
 import { answerAuthQuestion, immigrationText, type JobPlace } from "./workauth";
+import { savedAnswerFor } from "./answers";
 
 export interface FormQuestion {
   label: string;
@@ -78,6 +79,11 @@ export function planForm(questions: FormQuestion[], profile: Profile, job: JobPl
     const auth = answerAuthQuestion(q.label, job, profile.auth);
     if (auth) { put(pickOption(q.options, auth), "choice"); continue; }
 
+    // EX-08: a question you've answered before beats the app's own guesses below.
+    const saved = savedAnswerFor(profile.savedAnswers, q.label);
+    if (saved) { put(q.options?.length ? pickOption(q.options, saved) : saved, q.options?.length ? "choice" : "text"); continue; }
+
+
     if (has(l, /first name|given name/)) { put(first || null); continue; }
     if (has(l, /last name|surname|family name/)) { put(last || null); continue; }
     if (has(l, /^name$|full name|your name|^name\b/)) { put(profile.fullName || null); continue; }
@@ -102,7 +108,7 @@ export function planForm(questions: FormQuestion[], profile: Profile, job: JobPl
       else if (q.required) unresolved.push({ label: q.label, reason: "free-text box" });
       continue;
     }
-    // Anything else: essay boxes and unknown questions go to the user (AP-03).
+    // Anything else: essay boxes and unknown questions go to the user (EX-04).
     if (q.required) unresolved.push({ label: q.label, reason: q.type === "textarea" ? "essay question" : "unknown question" });
   }
   return { answers, unresolved, captcha: !!opts.captcha };

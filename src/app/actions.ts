@@ -11,6 +11,7 @@ import { appUrl, sendMail } from "@/lib/mailer";
 import { REJECT_LABELS } from "@/lib/labels";
 import { companyKey, londonDay, runSearch, type RunResult } from "@/lib/pipeline";
 import { tailorFor } from "@/lib/refresh";
+import { rememberAnswers } from "@/lib/answers";
 import { requireUser, SESSION_COOKIE, setSessionCookie, currentUser } from "@/lib/session";
 import * as store from "@/lib/store";
 import type { Profile, Role, Skill, UserLocation } from "@/lib/types";
@@ -331,6 +332,25 @@ export async function writeCoverLetterAction(_: FormState, f: FormData): Promise
   await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'cover_written', NULL)", [user.id, id]);
   revalidatePath(`/applications/${id}`);
   return { ok: true, message: "Cover letter written. Copy it into the form's cover letter box." };
+}
+
+// ---------- remembered answers (EX-08) ----------
+
+export async function updateSavedAnswerAction(f: FormData) {
+  const user = await requireUser();
+  const db = await getDb();
+  const p = await store.getProfile(db, user.id);
+  await store.saveProfile(db, user.id, { ...p, savedAnswers: rememberAnswers(p.savedAnswers, [{ question: str(f, "question", 300), answer: str(f, "answer", 2000) }]) });
+  revalidatePath("/profile");
+}
+
+export async function deleteSavedAnswerAction(f: FormData) {
+  const user = await requireUser();
+  const db = await getDb();
+  const p = await store.getProfile(db, user.id);
+  const q = str(f, "question", 300);
+  await store.saveProfile(db, user.id, { ...p, savedAnswers: p.savedAnswers.filter((a) => a.question !== q) });
+  revalidatePath("/profile");
 }
 
 // ---------- blocked companies (BL-01) ----------

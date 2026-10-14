@@ -4,6 +4,8 @@
 //   POST /api/ext/plan    {id, fields, captcha}      answers for the form's questions
 //   GET  /api/ext/file?id=&doc=cv|cover    the tailored PDF to attach
 //   POST /api/ext/applied {id}             mark the match applied
+//   POST /api/ext/draft   {id, question, maxLength}   draft an answer to an essay question
+//   POST /api/ext/remember {answers:[{question,answer}]}   remember your answers for next time
 //   POST /api/ext/capture {url,title,company,location,description}   make a match from this page
 import { APPLIED_STATUSES } from "@/lib/config";
 import { getDb } from "@/lib/db";
@@ -14,7 +16,8 @@ import { extensionUser, json } from "@/lib/http";
 import { llmFromEnv } from "@/lib/llm";
 import { findMatchForPage } from "@/lib/pagematch";
 import { freshTailored } from "@/lib/refresh";
-import { getApplication, getProfile, listApplications, PgPipelineStore, setStatus } from "@/lib/store";
+import { getApplication, getProfile, listApplications, PgPipelineStore, saveProfile, setStatus } from "@/lib/store";
+import { draftAnswer, rememberAnswers } from "@/lib/answers";
 import { captureJob } from "@/lib/capture";
 import { londonDay } from "@/lib/pipeline";
 import type { JobPlace } from "@/lib/workauth";
@@ -61,6 +64,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ action:
     return json({ match: found ? summary(found) : null, ready: apps.filter((a) => a.status === "new").slice(0, 30).map(summary) });
   }
 
+  if (action === "remember") {
+    const answers = (Array.isArray(b.answers) ? b.answers : []).slice(0, 50).map((a) => ({ question: String((a as { question?: unknown }).question ?? ""), answer: String((a as { answer?: unknown }).answer ?? "") }));
+    const p = await getProfile(db, user.id);
+    await saveProfile(db, user.id, { ...p, savedAnswers: rememberAnswers(p.savedAnswers, answers) });
+    return json({ ok: true, saved: answers.length });
+  }
+
   if (action === "capture") {
     const page = { url: String(b.url ?? ""), title: String(b.title ?? "").trim(), company: String(b.company ?? "").trim(), location: String(b.location ?? "").trim(), description: String(b.description ?? "") };
     if (!/^https?:\/\//.test(page.url)) return json({ error: "Open a job page first." }, 400);
@@ -97,6 +107,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ action:
     }
     await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'filled', $3)", [user.id, id, JSON.stringify({ answered: plan.answers.length, left: plan.unresolved.length })]);
     return json({ ...plan, coverLetter: letter });
+  }
+
+  if (action === "draft") {
+    const llm = llmFromEnv();
+    if (!llm) return json({ error: "Drafting needs the AI key (GEMINI_API_KEY) set in Render." }, 503);
+    const question = String(b.question ?? "").trim();
+    if (!question) return json({ error: "No question to answer." }, 400);
+    try {
+      const out = await draftAnswer(await getProfile(db, user.id), app, question, llm, typeof b.maxLength === "number" ? b.maxLength : undefined);
+      await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'drafted', $3)", [user.id, id, JSON.stringify({ question: question.slice(0, 200) })]);
+      return json(out);
+    } catch (err) {
+      return json({ error: `The AI couldn't draft this just now: ${(err as Error).message}` }, 502);
+    }
   }
 
   if (action === "applied") {

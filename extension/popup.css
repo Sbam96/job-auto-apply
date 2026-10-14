@@ -32,3 +32,8 @@ footer { display: flex; justify-content: space-between; font-size: 13px; border-
 footer a { color: var(--blue); }
 .wide { width: 100%; margin: 4px 0 6px; }
 .small { font-size: 12px; }
+#result li button { display: block; margin: 4px 0 6px; padding: 5px 9px; font-size: 12px; }
+#result .note { font-size: 12px; color: var(--muted); }
+#result .warn { font-size: 12px; color: #8a5a00; }
+#rememberList label { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; margin: 6px 0; }
+#rememberList input { width: auto; margin-top: 3px; }

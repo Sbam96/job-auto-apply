@@ -108,8 +108,27 @@ test("EX-02 EX-03 it recognises the job and fills the form: details, authorisati
   await expect(form.locator("#why")).toHaveValue("");
   await expect(form.locator("#why")).toHaveAttribute("data-jaa-todo", "1");
   await expect(popup.locator("#result")).toContainText("Why do you want to work at Formco?");
+  await expect(popup.locator("#result")).toContainText("How many years have you used Jira? (unknown question)");
   expect(await form.evaluate(() => document.body.dataset.submitted)).toBeUndefined(); // never submits
   if (process.env.SHOTS) { await popup.setViewportSize({ width: 360, height: 560 }); await popup.screenshot({ path: `${process.env.SHOTS}/popup.png` }); await form.screenshot({ path: `${process.env.SHOTS}/form.png`, fullPage: true }); }
+});
+
+test("EX-08 questions you answer yourself are remembered for next time, and shown in the app", async ({ page, baseURL }) => {
+  const form = ext.pages().find((p) => p.url().includes("co=Formco"))!;
+  await form.locator("#jira").selectOption("3+");
+  const popup = await openPopupFor(`${baseURL}/api/test/form?co=Formco`);
+  await expect(popup.locator("#remember")).toBeVisible();
+  await expect(popup.locator("#rememberList")).toContainText("How many years have you used Jira?");
+  await expect(popup.locator("#rememberList")).toContainText("3+");
+  await popup.getByRole("button", { name: "Remember ticked answers" }).click();
+  await expect(popup.locator("#status")).toHaveText("Remembered 1 answer for next time.");
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
+  await page.goto("/profile");
+  await expect(page.getByLabel("Answer to: How many years have you used Jira?")).toHaveValue("3+");
 });
 
 test("EX-06 on a job you found yourself, it makes a match from the page, then fills it", async ({ baseURL }) => {
@@ -127,6 +146,10 @@ test("EX-06 on a job you found yourself, it makes a match from the page, then fi
   await expect(form.locator("#first_name")).toHaveValue("Alex");
   await expect(form.locator("#auth")).toHaveValue("No"); // the page says United States
   expect(await form.locator("#resume").evaluate((el: HTMLInputElement) => el.files?.[0]?.name)).toBe("Alex-Example-CV-Newco.pdf");
+  await expect(form.locator("#jira")).toHaveValue("3+"); // EX-08: remembered from the last form
+  // EX-07: essay questions get a "Draft an answer" button (the test server has no AI key, so it says so).
+  await popup.getByRole("button", { name: "Draft an answer" }).click();
+  await expect(popup.locator("#result")).toContainText("Drafting needs the AI key");
   // Opening it again on the same page finds the match it made, rather than making another.
   const again = await openPopupFor(`${baseURL}/api/test/form?co=Newco`);
   await expect(again.locator("#jobEyebrow")).toHaveText("Your match for this page");

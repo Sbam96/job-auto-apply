@@ -7,6 +7,8 @@ let tabId = null;
 let matchId = null;
 let coverText = null;
 let ready = [];
+let frameFields = []; // [{frameId, fields}] from the last fill
+let toRemember = [];
 
 function status(text, error = false) {
   $("status").textContent = text;
@@ -100,6 +102,7 @@ async function start() {
     matchId = match.id;
     await chrome.storage.session.set({ [`tab:${tabId}`]: match.id });
     showJob(match, res.match ? "Your match for this page" : "Still filling");
+    await offerToRemember();
   } else {
     $("pick").hidden = false;
     $("pickList").hidden = !res.ready.length;
@@ -170,7 +173,8 @@ async function fill() {
       done.push(...result.done);
       failed.push(...result.failed);
     }
-    showResult(done, [...plan.unresolved.map((u) => `${u.label} (${u.reason})`), ...failed.map((l) => `${l} (couldn't fill this one)`)], plan.captcha);
+    frameFields = frames.map((f) => ({ frameId: f.frameId, fields: f.result.fields }));
+    showResult(done, [...plan.unresolved, ...failed.map((label) => ({ label, reason: "couldn't fill this one" }))], plan.captcha);
     status("Check everything, then press the site's submit button.");
   } catch (err) {
     status(err.message, true);
@@ -183,9 +187,52 @@ function showResult(done, todo, captcha) {
   const r = $("result");
   r.hidden = false;
   r.innerHTML = `<h2 class="ok">Filled ${done.length} field${done.length === 1 ? "" : "s"}</h2>` +
-    (todo.length ? `<h2 class="todo">Left for you (outlined in red)</h2><ul>${todo.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>` : "<p>Nothing left to answer.</p>") +
+    (todo.length ? `<h2 class="todo">Left for you (outlined in red)</h2><ul>${todo.map((t, i) => `<li>${escapeHtml(t.label)} <span class="note">(${escapeHtml(t.reason)})</span>${t.reason === "essay question" ? `<button data-draft="${i}">Draft an answer</button><span class="warn" id="draft-${i}"></span>` : ""}</li>`).join("")}</ul>` : "<p>Nothing left to answer.</p>") +
+    (todo.some((t) => t.reason !== "essay question") ? "<p class=\"note\">Answer the others on the page. Next time you open me here, I'll offer to remember them.</p>" : "") +
     (captcha ? "<p class=\"todo\">There's a \"verify you're human\" check to tick yourself.</p>" : "");
+  for (const b of r.querySelectorAll("[data-draft]")) b.addEventListener("click", () => draft(todo[Number(b.dataset.draft)].label, Number(b.dataset.draft), b));
   $("copyCover").hidden = !coverText;
+}
+
+// ---------- drafting an essay answer (EX-07) ----------
+
+async function draft(label, i, button) {
+  const where = frameFields.find((f) => f.fields.some((x) => x.label === label));
+  const field = where?.fields.find((x) => x.label === label);
+  button.disabled = true;
+  button.textContent = "Drafting…";
+  try {
+    const out = await post("draft", { id: matchId, question: label, maxLength: field?.maxLength });
+    await inFrames((l, v) => window.__jaa.put(l, v), [label, out.answer], [where.frameId]);
+    button.textContent = "Draft again";
+    $(`draft-${i}`).textContent = out.warnings.length ? `Drafted (outlined in amber). Check: it ${out.warnings.join(", ")}.` : "Drafted and put in the page, outlined in amber. Read it and make it yours.";
+  } catch (err) {
+    button.textContent = "Draft an answer";
+    $(`draft-${i}`).textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// ---------- remembering your answers (EX-08) ----------
+
+async function offerToRemember() {
+  const frames = await inFrames(() => window.__jaa.answered());
+  toRemember = frames.flatMap((f) => f.result ?? []);
+  if (!toRemember.length) return;
+  $("remember").hidden = false;
+  $("rememberList").innerHTML = toRemember.map((a, i) => `<label><input type="checkbox" data-i="${i}" checked> <span><strong>${escapeHtml(a.question)}</strong><br>${escapeHtml(a.answer)}</span></label>`).join("");
+}
+
+async function remember() {
+  const picked = [...$("rememberList").querySelectorAll("input:checked")].map((c) => toRemember[Number(c.dataset.i)]);
+  try {
+    await post("remember", { answers: picked });
+    $("remember").hidden = true;
+    status(`Remembered ${picked.length} answer${picked.length === 1 ? "" : "s"} for next time.`);
+  } catch (err) {
+    status(err.message, true);
+  }
 }
 
 async function markApplied() {
@@ -207,6 +254,7 @@ $("disconnect").addEventListener("click", disconnect);
 $("fillBtn").addEventListener("click", fill);
 $("appliedBtn").addEventListener("click", markApplied);
 $("captureBtn").addEventListener("click", capture);
+$("rememberBtn").addEventListener("click", remember);
 $("copyCover").addEventListener("click", async () => { await navigator.clipboard.writeText(coverText ?? ""); $("copyCover").textContent = "Copied"; setTimeout(() => { $("copyCover").textContent = "Copy cover letter text"; }, 1500); });
 $("pickSelect").addEventListener("change", async (e) => {
   const id = Number(e.target.value);
