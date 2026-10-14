@@ -2,8 +2,12 @@
 // user's own machine filling the user's own forms; this data never goes to the AI.
 import { getDb } from "@/lib/db";
 import { json, workerUser } from "@/lib/http";
+import { llmFromEnv } from "@/lib/llm";
+import { freshTailored } from "@/lib/refresh";
 import { cvHtml } from "@/lib/render";
 import { getProfile, nextForWorker } from "@/lib/store";
+
+export const maxDuration = 120;
 
 export async function GET(req: Request) {
   const user = await workerUser(req);
@@ -13,10 +17,12 @@ export async function GET(req: Request) {
   const app = await nextForWorker(db, user.id, mode);
   if (!app) return json({ application: null });
   const profile = await getProfile(db, user.id);
+  // TL-06: if the master CV changed after this was tailored, tailor it again from the latest CV.
+  const tailored = await freshTailored(db, user.id, app, profile, llmFromEnv());
   return json({
     application: { id: app.id, url: app.url, ats: app.ats, title: app.title, company: app.company, region: app.region, mode: app.mode, countries: app.countries, route: app.route, status: app.status, score: app.score },
     profile,
-    coverLetter: app.tailored.coverLetter,
-    cvHtml: cvHtml(profile, app.tailored),
+    coverLetter: tailored.coverLetter,
+    cvHtml: cvHtml(profile, tailored),
   });
 }

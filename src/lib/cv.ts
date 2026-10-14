@@ -112,3 +112,19 @@ export const formatMonth = (s: string | null) => {
   const [y, m] = s.split("-").map(Number);
   return `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1] ?? ""} ${y}`.trim();
 };
+
+// TL-06: a short fingerprint of everything that goes into a tailored CV. Each application keeps the
+// fingerprint it was tailored from; if the master CV has changed since, it is tailored again before
+// it is submitted. Contact details aren't included: those are always read fresh.
+export function cvFingerprint(profile: Pick<Profile, "summary" | "experience" | "skills" | "education" | "certifications">): string {
+  const parts = JSON.stringify([
+    profile.summary ?? "",
+    (profile.experience ?? []).map((r) => [r.id, r.title, r.employer, r.team ?? "", r.location ?? "", r.start, r.end, approvedBullets(r).map((b) => b.text)]),
+    usableSkills(profile),
+    profile.education ?? [],
+    profile.certifications ?? [],
+  ]);
+  let h = 0x811c9dc5; // FNV-1a, 32-bit: no crypto needed, works in the browser too
+  for (let i = 0; i < parts.length; i++) { h ^= parts.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}

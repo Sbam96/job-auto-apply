@@ -2,7 +2,7 @@
 // The LLM only rewords and reorders. A validator rejects anything it adds that isn't true,
 // and falls back to the user's own words for that line.
 
-import { approvedBullets, llmSafeProfile, orderedRoles, usableSkills } from "./cv";
+import { approvedBullets, cvFingerprint, llmSafeProfile, orderedRoles, usableSkills } from "./cv";
 import { checkInjection } from "./injection";
 import type { LLM } from "./llm";
 import { canonicalSkill, skillsIn } from "./skills";
@@ -25,6 +25,7 @@ export interface Tailored {
   coverLetter: string | null;
   warnings: string[];
   usedLLM: boolean;
+  cvVersion?: string; // TL-06: fingerprint of the master CV this was tailored from
 }
 
 interface LlmReply {
@@ -76,6 +77,10 @@ const SYSTEM = `You tailor a candidate's CV to one job. Rules you must follow:
 - Reply with JSON only: {"summary": string, "roles": [{"id": string, "bullets": [{"sourceId": string, "text": string}]}], "skills": string[], "coverLetter": string | null}`;
 
 export async function tailor(profile: Profile, job: Job, llm: LLM | null, opts: { coverLetter: boolean; immigrationText?: string | null }): Promise<Tailored> {
+  return { ...(await tailorOnce(profile, job, llm, opts)), cvVersion: cvFingerprint(profile) };
+}
+
+async function tailorOnce(profile: Profile, job: Job, llm: LLM | null, opts: { coverLetter: boolean; immigrationText?: string | null }): Promise<Tailored> {
   const base = baselineTailor(profile, job);
   if (!llm) return base;
   const safe = llmSafeProfile(profile); // TL-03

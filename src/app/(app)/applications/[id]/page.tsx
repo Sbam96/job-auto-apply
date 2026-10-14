@@ -3,6 +3,8 @@ import { setStatusAction } from "@/app/actions";
 import { STATUS_LABELS } from "@/lib/config";
 import { formatMonth } from "@/lib/cv";
 import { getDb } from "@/lib/db";
+import { llmFromEnv } from "@/lib/llm";
+import { freshTailored } from "@/lib/refresh";
 import { requireUser } from "@/lib/session";
 import { events, getApplication, getProfile, submissions } from "@/lib/store";
 import { nextStatuses } from "@/lib/status";
@@ -22,7 +24,8 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
   if (!app) notFound();
   const [profile, history, sent] = await Promise.all([getProfile(db, user.id), events(db, user.id, id), submissions(db, user.id, id)]);
   const place = { region: app.region as "US", mode: app.mode as "remote", countries: app.countries };
-  const t = app.tailored;
+  // TL-06: show (and submit) the version tailored from the latest master CV.
+  const t = await freshTailored(db, user.id, app, profile, llmFromEnv());
   const moves = nextStatuses(app.status);
   const waiting = app.status === "needs_approval" || app.status === "needs_action";
 

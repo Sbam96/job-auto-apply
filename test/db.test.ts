@@ -166,3 +166,37 @@ d("DP data rights", () => {
     expect(s.payload).toEqual({ Email: "alex@example.com", "Resume/CV": "cv.pdf" });
   });
 });
+
+d("TL-06 waiting applications use the latest CV", () => {
+  test("TL-06 an application tailored before a CV change is tailored again from the new CV before it's sent", async () => {
+    const { freshTailored, isStale } = await import("@/lib/refresh");
+    const u = await verifiedUser("tl6@example.com");
+    const id = await seedApplication(u.id);
+    const before = (await store.getApplication(db, u.id, id))!;
+    const p = await store.getProfile(db, u.id);
+    expect(isStale(before, p)).toBe(false);
+    expect(await freshTailored(db, u.id, before, p, null)).toEqual(before.tailored); // unchanged CV: nothing redone
+
+    const newLine = "Delivered a national data strategy with 12 government departments.";
+    const updated = { ...p, experience: p.experience.map((r, i) => (i === 0 ? { ...r, bullets: [{ id: "new1", text: newLine, status: "approved" as const, source: "user" as const }, ...r.bullets] } : r)) };
+    await store.saveProfile(db, u.id, updated);
+    const fresh = await store.getProfile(db, u.id);
+    expect(isStale(before, fresh)).toBe(true);
+    const t = await freshTailored(db, u.id, before, fresh, null);
+    expect(t.roles.flatMap((r) => r.bullets.map((b) => b.text))).toContain(newLine);
+    const after = (await store.getApplication(db, u.id, id))!;
+    expect(after.tailored.cvVersion).toBe(t.cvVersion);
+    expect(isStale(after, fresh)).toBe(false);
+    expect((await store.events(db, u.id, id)).map((e) => e.kind)).toContain("cv_updated");
+  });
+  test("TL-06 applications already sent keep the CV they were sent with", async () => {
+    const { isStale } = await import("@/lib/refresh");
+    const u = await verifiedUser("tl6b@example.com");
+    const id = await seedApplication(u.id);
+    const app = (await store.getApplication(db, u.id, id))!;
+    const p = await store.getProfile(db, u.id);
+    const changed = { ...p, summary: `${p.summary} Now at a consultancy.` };
+    expect(isStale(app, changed)).toBe(true);
+    expect(isStale({ ...app, status: "applied" }, changed)).toBe(false);
+  });
+});
