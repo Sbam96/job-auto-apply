@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { canAutoSubmit, planForm } from "../src/lib/forms";
 import type { Profile } from "../src/lib/types";
-import { fillForm, hasCaptcha, openForm, scanForm, submitForm } from "./formfill";
+import { fillForm, hasCaptcha, isHumanCheck, openForm, scanForm, submitForm } from "./formfill";
+import { spawn } from "node:child_process";
 import type { Page } from "@playwright/test";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -28,6 +29,12 @@ interface Next {
   profile: Profile;
   coverLetter: string | null;
   cvHtml: string;
+}
+
+// Opens a link in your everyday browser (not the worker's), for sites that block automated browsers.
+function openInNormalBrowser(url: string) {
+  const [cmd, args] = process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+  try { spawn(cmd, args as string[], { detached: true, stdio: "ignore" }).unref(); } catch { /* the link is printed too */ }
 }
 
 async function main() {
@@ -79,8 +86,9 @@ async function main() {
       const ask = async (prompt: string) => {
         for (;;) {
           const a = (await rl.question(prompt)).trim().toLowerCase();
+          if (a === "o") { openInNormalBrowser(app.url); console.log(`  Opened in your normal browser: ${app.url}`); continue; }
           if (["s", "l", "k", "q"].includes(a)) return a;
-          console.log("  Type s, l, k or q.");
+          console.log("  Type s, l, k, q, or o to open it in your normal browser.");
         }
       };
       const closeAll = async (...pages: Page[]) => { for (const p of new Set(pages)) await p.close().catch(() => {}); };
@@ -88,6 +96,7 @@ async function main() {
       let quit = false;
       try {
         formPage = await openForm(page, app.url, app.ats);
+        if (await isHumanCheck(formPage)) throw new HumanCheck();
         const fields = await scanForm(formPage);
         if (fields.length < 2) throw new Error("couldn't find the application form on the job page (the employer's site may need you to sign in or click through first)");
         const place = { region: app.region, mode: app.mode, countries: app.countries };
@@ -109,7 +118,7 @@ async function main() {
         } else {
           // Review: everything known is filled in; the user checks it and clicks submit.
           if (plan.unresolved.length) console.log(`  Still to answer: ${plan.unresolved.map((u) => u.label).join("; ")}`);
-          const answer = await ask("  Check the browser, submit it there, then type: [s] submitted  [l] later  [k] skip  [q] quit > ");
+          const answer = await ask("  Check the browser, submit it there, then type: [s] submitted  [l] later  [k] skip  [o] open in my normal browser  [q] quit > ");
           if (answer === "s") await report({ id: app.id, outcome: "applied", targetUrl: formPage.url(), payload: entered });
           else if (answer === "k") await report({ id: app.id, outcome: "skipped" });
           else if (answer === "l") await report({ id: app.id, outcome: "needs_action", unresolved: plan.unresolved.length ? plan.unresolved : [{ label: "Review", reason: "left for later" }] });
@@ -117,12 +126,23 @@ async function main() {
           quit = answer === "q";
         }
       } catch (err) {
-        const reason = (err as Error).message.split("\n")[0];
+        const human = err instanceof HumanCheck;
+        const reason = human ? "the site asks you to verify you're human and blocks automated browsers; apply in your normal browser" : (err as Error).message.split("\n")[0];
         console.log(`  ! ${reason}`);
-        if (review) {
+        if (review && human) {
+          // Don't fight the check: open the job in your everyday browser and close the worker's tab.
+          await closeAll(formPage, page);
+          openInNormalBrowser(app.url);
+          console.log(`  Opened it in your normal browser. Upload this CV: ${cvPath}${coverPath ? `\n  Cover letter: ${coverPath}` : ""}`);
+          const answer = await ask("  When you've applied, type: [s] submitted  [l] later  [k] skip  [o] open it again  [q] quit > ");
+          if (answer === "s") await report({ id: app.id, outcome: "applied", targetUrl: app.url, payload: { note: "Submitted by hand in your own browser" } });
+          else if (answer === "k") await report({ id: app.id, outcome: "skipped" });
+          else await report({ id: app.id, outcome: "needs_action", unresolved: [{ label: "Human check", reason: "the site blocks automated browsers; apply in your normal browser" }] }).catch(() => {});
+          quit = answer === "q";
+        } else if (review) {
           // Keep the browser open so you can apply by hand. Your CV and cover letter are saved here:
           console.log(`  Apply in the browser yourself if you like. Your files: ${cvPath}${coverPath ? ` and ${coverPath}` : ""}`);
-          const answer = await ask("  Then type: [s] submitted  [l] later  [k] skip  [q] quit > ");
+          const answer = await ask("  Then type: [s] submitted  [l] later  [k] skip  [o] open in my normal browser  [q] quit > ");
           if (answer === "s") await report({ id: app.id, outcome: "applied", targetUrl: formPage.url(), payload: { note: "Submitted by hand" } });
           else if (answer === "k") await report({ id: app.id, outcome: "skipped" });
           else await report({ id: app.id, outcome: "needs_action", unresolved: [{ label: "Form", reason }] }).catch(() => {});
@@ -142,5 +162,7 @@ async function main() {
     await context.close();
   }
 }
+
+class HumanCheck extends Error {}
 
 main().catch((err) => { console.error(err); process.exit(1); });

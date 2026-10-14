@@ -77,7 +77,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Tailored CV" aside={<span className="text-xs text-muted">{t.usedLLM ? "Reworded by AI, checked against your CV" : "Your own wording, reordered"}</span>}>
+          <Card title="Tailored CV" aside={<span className="flex items-center gap-3 text-xs text-muted">{t.usedLLM ? "Reworded by AI, checked against your CV" : "Your own wording, reordered"}<a href={`/applications/${id}/cv`} target="_blank" rel="noopener" className="font-medium text-accent underline">Open as PDF</a></span>}>
             <div className="space-y-4 text-sm">
               {t.summary && <p>{t.summary}</p>}
               {t.roles.map((r) => (

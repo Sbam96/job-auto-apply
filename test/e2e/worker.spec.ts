@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { canAutoSubmit, planForm } from "../../src/lib/forms";
 import { emptyProfile } from "../../src/lib/cv";
 import { IMMIGRATION_TEXT } from "../../src/lib/workauth";
-import { fillForm, hasCaptcha, openForm, prepare, scanForm } from "../../worker/formfill";
+import { fillForm, hasCaptcha, isHumanCheck, openForm, prepare, scanForm } from "../../worker/formfill";
 import { pathToFileURL } from "node:url";
 
 const profile = { ...emptyProfile(), fullName: "Alex Example", contactEmail: "alex@example.com", phone: "+44 7700 900000", linkedin: "https://linkedin.com/in/alex", homeCity: "Manchester, UK", expectedSalary: { usd: 110000, gbp: 60000 } };
@@ -120,4 +120,11 @@ test("BUG 4: on a laptop the worker runs through tsx, which adds __name() calls 
   await prepare(page);
   expect(await page.evaluate(compiled)).toBe(1);
   expect((await scanForm(page)).length).toBeGreaterThan(5);
+});
+
+test("AP-03 a 'verify you are human' page is recognised, so the worker hands the job to your normal browser", async ({ page }) => {
+  await page.setContent("<!doctype html><html><head><title>Just a moment...</title></head><body><h1>Verify you are human by completing the action below.</h1></body></html>");
+  expect(await isHumanCheck(page)).toBe(true);
+  await page.setContent(form());
+  expect(await isHumanCheck(page)).toBe(false);
 });

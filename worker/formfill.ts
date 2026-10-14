@@ -51,6 +51,15 @@ export async function openForm(page: Page, url: string, ats: string | null): Pro
   return current;
 }
 
+// Sites behind a "verify you are human" check (Cloudflare and similar) often refuse automated browsers
+// even after a person ticks the box. The worker doesn't try to get round these; it hands the job to
+// your normal browser instead.
+export async function isHumanCheck(page: Page) {
+  if (/just a moment|attention required|verify you are human/i.test(await page.title().catch(() => ""))) return true;
+  if ((await page.locator('iframe[src*="challenges.cloudflare.com"], #challenge-form, #cf-challenge-running').count().catch(() => 0)) > 0) return true;
+  return /verify(ing)? you are (a )?human|checking your browser|performing security verification/i.test((await page.locator("body").innerText({ timeout: 2000 }).catch(() => "")).slice(0, 2000));
+}
+
 export async function hasCaptcha(page: Page) {
   return (await page.locator('iframe[src*="recaptcha"]:visible, iframe[src*="hcaptcha"]:visible, iframe[src*="turnstile"]:visible, .g-recaptcha:visible, .h-captcha:visible').count()) > 0;
 }

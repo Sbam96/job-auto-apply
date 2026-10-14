@@ -221,6 +221,16 @@ test("TR-04 a queued application can be cancelled, and the worker then won't pic
   expect(next.application?.id).not.toBe(id);
 });
 
+test("AP-05 the tailored CV opens as a printable page to save as PDF", async ({ page }) => {
+  await login(page);
+  const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Printco" } })).json();
+  await page.goto(`/applications/${id}`);
+  const [cv] = await Promise.all([page.waitForEvent("popup"), page.getByRole("link", { name: "Open as PDF" }).click()]);
+  await expect(cv.getByRole("button", { name: "Save as PDF / print" })).toBeVisible();
+  await expect(cv.getByText("Wrote user stories in Jira at Insureco")).toBeVisible();
+  expect((await page.request.get(`/applications/999999/cv`)).status()).toBe(404);
+});
+
 test("TR-03 the worker flagging a form emails the user", async ({ page }) => {
   await login(page);
   await page.goto("/settings");
