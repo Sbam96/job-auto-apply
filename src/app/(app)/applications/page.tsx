@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { listApplications } from "@/lib/store";
+import { getProfile, listApplications } from "@/lib/store";
+import { waitingReason } from "@/lib/reasons";
 import { setStatusAction } from "@/app/actions";
 import type { Status } from "@/lib/config";
 import { Empty, PageHeader, Score, StatusBadge } from "@/components/ui";
@@ -18,7 +19,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
   const user = await requireUser();
   const { view = "waiting" } = await searchParams;
   const current = VIEWS.find((v) => v.key === view) ?? VIEWS[0];
-  const apps = await listApplications(await getDb(), user.id, current.statuses);
+  const db = await getDb();
+  const [apps, profile] = await Promise.all([listApplications(db, user.id, current.statuses), getProfile(db, user.id)]);
   return (
     <>
       <PageHeader title="Applications" intro="Every role the app matched, what it did, and what's waiting for you." />
@@ -43,6 +45,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                 <tr key={a.id} className="hover:bg-canvas">
                   <td className="px-4 py-3">
                     <Link href={`/applications/${a.id}`} className="font-medium hover:text-accent">{a.title}</Link>
+                    {(a.status === "needs_approval" || a.status === "needs_action") && <p className="text-xs">{waitingReason(a, profile.thresholds?.auto).short}</p>}
                     <p className="text-muted">{a.company}{a.flags.length > 0 && <span className="ml-2 text-warn" title={a.flags.join("\n")}>⚑ {a.flags.length} note{a.flags.length > 1 ? "s" : ""}</span>}</p>
                   </td>
                   <td className="px-4 py-3 text-muted">{a.region}, {a.mode}</td>

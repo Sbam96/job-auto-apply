@@ -166,6 +166,8 @@ test("TR-01 an application moves through approval, applied and interview", async
   await page.goto("/applications");
   await page.getByRole("link", { name: "Business Analyst" }).first().click();
   await expect(page.getByRole("heading", { name: "Approve this application?" })).toBeVisible();
+  await expect(page.getByText("Why this wasn't sent automatically:")).toBeVisible(); // TR-05
+  await expect(page.locator("[data-reasons] li").first()).not.toBeEmpty();
   await expect(page.getByText("Wrote user stories in Jira at Insureco")).toBeVisible();
   await page.getByRole("button", { name: "I applied myself" }).click();
   await expect(page.locator("[data-status]").first()).toHaveAttribute("data-status", "applied");
@@ -228,6 +230,8 @@ test("TR-03 the worker flagging a form emails the user", async ({ page }) => {
   await page.request.post("/api/worker/result", { headers: { Authorization: `Bearer ${token}` }, data: { id, outcome: "needs_action", unresolved: [{ label: "Why Essayco?", reason: "essay question" }] } });
   const { mail } = await (await page.request.get(`/api/test/outbox?to=${encodeURIComponent(email)}`)).json();
   expect(mail[0].subject).toBe("Action needed: Business Analyst at Essayco");
+  await page.goto(`/applications/${id}`);
+  await expect(page.locator("[data-reasons]")).toContainText("Why Essayco?: essay question"); // TR-05
   await page.goto(`/applications/${id}`);
   await expect(page.getByRole("heading", { name: "This needs your input" })).toBeVisible();
   await expect(page.getByText("Why Essayco?")).toBeVisible();

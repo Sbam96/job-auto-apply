@@ -8,6 +8,7 @@ import { freshTailored } from "@/lib/refresh";
 import { requireUser } from "@/lib/session";
 import { events, getApplication, getProfile, submissions } from "@/lib/store";
 import { nextStatuses } from "@/lib/status";
+import { waitingReason } from "@/lib/reasons";
 import { answerAuthQuestion, immigrationText } from "@/lib/workauth";
 import { Card, PageHeader, Score, StatusBadge, buttonClass, secondaryButtonClass } from "@/components/ui";
 import { CopyButton } from "./CopyButton";
@@ -39,9 +40,8 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
 
       {waiting && (
         <Card title={app.status === "needs_action" ? "This needs your input" : "Approve this application?"} className="mb-6 border-warn/40">
-          {app.status === "needs_action" && app.unresolved.length > 0 && (
-            <ul className="mb-4 list-disc space-y-1 pl-5 text-sm">{app.unresolved.map((u) => <li key={u.label}><strong>{u.label}</strong> <span className="text-muted">({u.reason})</span></li>)}</ul>
-          )}
+          <p className="mb-2 text-sm font-medium">{app.status === "needs_action" ? "Why the worker stopped:" : "Why this wasn't sent automatically:"}</p>
+          <ul className="mb-4 list-disc space-y-1 pl-5 text-sm" data-reasons>{waitingReason(app, profile.thresholds?.auto).details.map((d) => <li key={d}>{d}</li>)}</ul>
           <p className="mb-4 text-sm text-muted">
             Check the CV and answers below. Approving queues it for your laptop worker to submit. If you&apos;d rather apply yourself, open the job, apply, then mark it applied.
           </p>

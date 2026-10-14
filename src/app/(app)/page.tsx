@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { waitingReason } from "@/lib/reasons";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { dashboardCounts, getProfile, lastSearch, listApplications } from "@/lib/store";
@@ -88,6 +89,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                     <div className="min-w-0">
                       <p className="truncate font-semibold">{a.title}</p>
                       <p className="truncate text-sm text-muted">{a.company}, {a.region} {a.mode}</p>
+                      <p className="mt-1 text-sm">{waitingReason(a, profile.thresholds?.auto).short}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-3"><Score value={a.score} /><StatusBadge status={a.status} /></div>
                   </Link>
