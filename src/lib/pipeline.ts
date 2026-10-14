@@ -6,6 +6,7 @@ import { DAILY_MATCH_CAP, REMATCH_AFTER_DAYS, SOURCE_LIMITS, type Region, type W
 import { checkInjection } from "./injection";
 import type { LLM } from "./llm";
 import { evaluate, type ScoreBreakdown } from "./match";
+import { findDirectLink, isAggregator, type DirectLink } from "./direct";
 import { fetchAll, type Board } from "./sources";
 import { tailor, type Tailored } from "./tailor";
 import type { Job, Profile } from "./types";
@@ -35,6 +36,7 @@ export interface PipelineStore {
   createdOn(userId: string, day: string): Promise<number>;
   createApplication(app: NewApplication): Promise<number>;
   recordRun?(userId: string, summary: UserRunSummary): Promise<void>;
+  saveDirectLink?(jobId: number, link: DirectLink | null): Promise<void>;
 }
 
 // What one search found for one user: shown on the dashboard so filtering is never a mystery.
@@ -72,6 +74,7 @@ export async function runSearch(deps: { store: PipelineStore; llm: LLM | null; n
   const ids = await store.saveJobs(run.jobs);
   const result: RunResult = { fetched: run.jobs.length, sourceErrors: run.errors, skippedSources: run.skipped, created: [], rejected: {} };
 
+  const directChecked = new Set<number>();
   // Newest jobs first, so the daily cap goes on the freshest roles.
   const jobs = [...run.jobs].sort((a, b) => String(b.postedAt ?? "").localeCompare(String(a.postedAt ?? "")));
 
@@ -110,6 +113,11 @@ export async function runSearch(deps: { store: PipelineStore; llm: LLM | null; n
         flags, tailored,
       });
       if (applicationId < 0) continue;
+      // SR-08: job boards link to their own pages; look for the employer's own link once per job.
+      if (isAggregator(job.source) && store.saveDirectLink && !directChecked.has(jobId)) {
+        directChecked.add(jobId);
+        await store.saveDirectLink(jobId, await findDirectLink(job, deps.fetchImpl ?? fetch));
+      }
       made += 1;
       matched += 1;
       result.created.push({ userId, applicationId, title: job.title, company: job.company });

@@ -118,6 +118,9 @@ CREATE INDEX IF NOT EXISTS applications_user_key ON applications (user_id, dedup
 ALTER TABLE applications DROP COLUMN IF EXISTS route;
 ALTER TABLE applications DROP COLUMN IF EXISTS unresolved;
 DROP TABLE IF EXISTS submissions;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS direct_url TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS direct_via TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS direct_checked_at TIMESTAMPTZ;
 DROP TABLE IF EXISTS report_runs;
 ALTER TABLE users DROP COLUMN IF EXISTS worker_token_hash;
 ALTER TABLE users DROP COLUMN IF EXISTS worker_seen_at;

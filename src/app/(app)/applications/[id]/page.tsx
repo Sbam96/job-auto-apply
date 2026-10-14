@@ -5,7 +5,8 @@ import { getDb } from "@/lib/db";
 import { llmFromEnv } from "@/lib/llm";
 import { editedButOutdated, freshTailored } from "@/lib/refresh";
 import { requireUser } from "@/lib/session";
-import { events, getApplication, getProfile } from "@/lib/store";
+import { employerSearchUrl, findDirectLink, isAggregator, sourceName } from "@/lib/direct";
+import { events, getApplication, getProfile, saveDirectLink } from "@/lib/store";
 import { nextStatuses } from "@/lib/status";
 import { answerAuthQuestion, immigrationText } from "@/lib/workauth";
 import { Card, PageHeader, Score, StatusBadge, buttonClass, secondaryButtonClass } from "@/components/ui";
@@ -30,8 +31,15 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
   const db = await getDb();
-  const app = await getApplication(db, user.id, id);
+  let app = await getApplication(db, user.id, id);
   if (!app) notFound();
+  // SR-08: matches made before direct links existed get looked up the first time they're opened.
+  if (isAggregator(app.source) && !app.direct_checked_at) {
+    await saveDirectLink(db, app.job_id, await findDirectLink(app));
+    app = (await getApplication(db, user.id, id))!;
+  }
+  const viaBoard = isAggregator(app.source);
+  const applyUrl = viaBoard ? app.direct_url : app.url;
   const [profile, history] = await Promise.all([getProfile(db, user.id), events(db, user.id, id)]);
   const place = { region: app.region as "US", mode: app.mode as "remote", countries: app.countries };
   // TL-06: show (and download) the version tailored from the latest master CV.
@@ -79,9 +87,18 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
           {ready && (
             <>
               <li>
-                <p className="mb-2 font-medium">2. Apply on the employer&apos;s site</p>
-                <a href={app.url} target="_blank" rel="noopener noreferrer" className={secondaryButtonClass}>Open the job ↗</a>
-                <span className="ml-3 text-xs text-muted">The answers for the form are further down this page.</span>
+                <p className="mb-2 font-medium">2. Apply on {app.company}&apos;s site</p>
+                {applyUrl ? (
+                  <a href={applyUrl} target="_blank" rel="noopener noreferrer" className={secondaryButtonClass} data-apply-link>Open the job on {app.company}&apos;s site ↗</a>
+                ) : (
+                  <a href={employerSearchUrl(app)} target="_blank" rel="noopener noreferrer" className={secondaryButtonClass} data-apply-link>Find it on {app.company}&apos;s site ↗</a>
+                )}
+                <p className="mt-2 text-xs text-muted">
+                  {viaBoard && app.direct_url && <>Direct link found on {app.direct_via}. </>}
+                  {viaBoard && !app.direct_url && <>{sourceName(app.source)} didn&apos;t give the employer&apos;s link and we couldn&apos;t find it on their job board, so this searches for it. </>}
+                  {viaBoard && <>Listed on <a href={app.url} target="_blank" rel="noopener noreferrer" className="underline">{sourceName(app.source)}</a>{app.source === "himalayas" ? " (applying there needs a free Himalayas account)" : ""}. </>}
+                  The answers for the form are further down this page.
+                </p>
               </li>
               <li>
                 <p className="mb-2 font-medium">3. Tell the app you&apos;ve applied</p>

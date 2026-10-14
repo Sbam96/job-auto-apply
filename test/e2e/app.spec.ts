@@ -187,6 +187,20 @@ test("WA-01 a US match shows not-authorised answers and the immigration text, re
   await expect(answers).toContainText("eligible to apply for permanent residence");
 });
 
+test("SR-08 a job found on Himalayas links to the employer's own page, with Himalayas credited", async ({ page }) => {
+  await login(page);
+  const listing = "https://himalayas.app/companies/rubicon-path/jobs/senior-business-analyst";
+  const found = await (await page.request.post("/api/test/seed", { data: { email, company: "Rubicon Path", source: "himalayas", url: listing, direct: { url: "https://jobs.lever.co/rubiconpath/2", via: "Rubicon Path's Lever job board" } } })).json();
+  await page.goto(`/applications/${found.id}`);
+  await expect(page.locator("[data-apply-link]")).toHaveAttribute("href", "https://jobs.lever.co/rubiconpath/2");
+  await expect(page.getByText("Direct link found on Rubicon Path's Lever job board.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Himalayas" })).toHaveAttribute("href", listing);
+  const missing = await (await page.request.post("/api/test/seed", { data: { email, company: "Hiddenco", source: "himalayas", url: "https://himalayas.app/companies/hiddenco/jobs/ba", direct: null } })).json();
+  await page.goto(`/applications/${missing.id}`);
+  await expect(page.locator("[data-apply-link]")).toHaveText("Find it on Hiddenco's site ↗");
+  expect(await page.locator("[data-apply-link]").getAttribute("href")).toContain("google.com/search");
+});
+
 test("DOC-01 DOC-02 the CV downloads as a PDF and as a Word file", async ({ page }) => {
   await login(page);
   const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Fileco" } })).json();

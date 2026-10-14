@@ -135,10 +135,12 @@ export interface ApplicationRow {
   flags: string[]; tailored: Tailored; note: string | null;
   created_at: Date; updated_at: Date; applied_at: Date | null;
   job_id: number; company: string; title: string; location: string; url: string; description: string; ats: string | null; attribution: string | null; salary: Job["salary"];
+  source: string; direct_url: string | null; direct_via: string | null; direct_checked_at: Date | null;
 }
 
 const APP_SELECT = `SELECT a.id, a.status, a.score, a.region, a.mode, a.countries, a.breakdown, a.flags, a.tailored, a.note,
-  a.created_at, a.updated_at, a.applied_at, j.id AS job_id, j.company, j.title, j.location, j.url, j.description, j.ats, j.attribution, j.salary
+  a.created_at, a.updated_at, a.applied_at, j.id AS job_id, j.company, j.title, j.location, j.url, j.description, j.ats, j.attribution, j.salary,
+  j.source, j.direct_url, j.direct_via, j.direct_checked_at
   FROM applications a JOIN jobs j ON j.id = a.job_id`;
 
 export async function listApplications(db: Db, userId: string, statuses?: Status[]) {
@@ -163,6 +165,11 @@ export async function setStatus(db: Db, userId: string, id: number, to: Status, 
        applied_at = CASE WHEN $3 = 'applied' AND applied_at IS NULL THEN now() WHEN $3 = 'new' THEN NULL ELSE applied_at END
      WHERE user_id = $1 AND id = $2`, [userId, id, to, note ?? null]);
   await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'status', $3)", [userId, id, JSON.stringify({ from: app.status, to, note: note ?? null })]);
+}
+
+// SR-08: the employer's own link for a job found on a job board (null: looked, not found).
+export async function saveDirectLink(db: Db, jobId: number, link: { url: string; via: string } | null) {
+  await db.query("UPDATE jobs SET direct_url = $2, direct_via = $3, direct_checked_at = now() WHERE id = $1", [jobId, link?.url ?? null, link?.via ?? null]);
 }
 
 export async function saveTailored(db: Db, userId: string, id: number, tailored: Tailored) {
@@ -288,6 +295,10 @@ export class PgPipelineStore implements PipelineStore {
   async createdOn(userId: string, day: string) {
     const { rows } = await this.db.query<{ n: string }>("SELECT count(*) AS n FROM applications WHERE user_id = $1 AND created_day = $2", [userId, day]);
     return Number(rows[0].n);
+  }
+
+  async saveDirectLink(jobId: number, link: { url: string; via: string } | null) {
+    await saveDirectLink(this.db, jobId, link);
   }
 
   async recordRun(userId: string, summary: UserRunSummary) {

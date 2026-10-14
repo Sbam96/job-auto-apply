@@ -117,6 +117,20 @@ describe("search runs", () => {
     await runSearch({ store, llm: null, now: NOW, fetchImpl: impl });
     expect(store.runs.get("u1")).toMatchObject({ checked: 3, matched: 1, rejected: { title: 1, location: 1 } });
   });
+  test("SR-08 a match found on Himalayas gets the employer's own link looked up; company boards don't need it", async () => {
+    const { store } = setup([{ id: 1, title: "Business Analyst", location: "Remote - UK" }]);
+    const { impl } = fakeFetch({
+      [boardUrl(board)]: gh([{ id: 1, title: "Business Analyst", location: "Remote - UK" }]),
+      [REMOTIVE_URL]: { jobs: [] },
+      "https://himalayas.app/jobs/api/search?q=business%20analyst&sort=recent": { jobs: [{ guid: "https://himalayas.app/companies/rubicon/jobs/ba", title: "Senior Business Analyst", companyName: "Rubicon", locationRestrictions: ["United Kingdom"], description: desc, applicationLink: "https://himalayas.app/companies/rubicon/jobs/ba", pubDate: 1791900000 }] },
+      "https://api.ashbyhq.com/posting-api/job-board/rubicon": { jobs: [{ title: "Senior Business Analyst", jobUrl: "https://jobs.ashbyhq.com/rubicon/77" }] },
+    });
+    await runSearch({ store, llm: null, now: NOW, fetchImpl: impl });
+    const hima = [...store.jobs.values()].find((j) => j.job.source === "himalayas")!;
+    expect(store.apps.some((a) => a.jobId === hima.id)).toBe(true);
+    expect(store.direct.get(hima.id)).toEqual({ url: "https://jobs.ashbyhq.com/rubicon/77", via: "Rubicon's Ashby job board" });
+    expect(store.direct.has(store.jobs.get("greenhouse:acme:1")!.id)).toBe(false);
+  });
   test("SR-06 SR-07 Himalayas is searched per target title, and Remote OK's feed is read, when available", async () => {
     const { store } = setup([]);
     const { impl, calls } = fakeFetch({ [boardUrl(board)]: { jobs: [] }, [REMOTIVE_URL]: { jobs: [] } });

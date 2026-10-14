@@ -30,6 +30,8 @@ export class MemoryStore implements PipelineStore {
   async hasApplication(userId: string, key: string, appliedSince: Date) {
     return this.apps.some((a) => a.userId === userId && a.dedupeKey === key && (!APPLIED_STATUSES.includes(a.status) || !a.appliedAt || a.appliedAt >= appliedSince));
   }
+  direct = new Map<number, { url: string; via: string } | null>();
+  async saveDirectLink(jobId: number, link: { url: string; via: string } | null) { this.direct.set(jobId, link); }
   async createdOn(userId: string, day: string) { return this.apps.filter((a) => a.userId === userId && a.day === day).length; }
   async createApplication(app: NewApplication) {
     const id = this.apps.length + 1;
