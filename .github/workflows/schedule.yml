@@ -1,6 +1,7 @@
 # Free scheduling: GitHub Actions calls the app on Render.
-# Needs two repository secrets: APP_URL (e.g. https://job-auto-apply.onrender.com) and CRON_SECRET
-# (the same value as CRON_SECRET in Render).
+# Needs two repository secrets: the app's address (e.g. https://job-auto-apply.onrender.com) and the
+# cron key (the same value as CRON_SECRET in Render). Named APP_URL and CRON_SECRET, or
+# JOBAUTOAPPLY and JOBAUTOAPPLY1 in either order: the one starting with http is the address.
 name: Scheduled search and report
 
 on:
@@ -18,11 +19,21 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      S1: ${{ secrets.APP_URL || secrets.JOBAUTOAPPLY }}
+      S2: ${{ secrets.CRON_SECRET || secrets.JOBAUTOAPPLY1 }}
     steps:
+      - name: Work out which secret is which
+        run: |
+          case "$S1" in http*) URL="$S1"; KEY="$S2";; *) URL="$S2"; KEY="$S1";; esac
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "Missing secrets: add the app address and the cron key"; exit 1; fi
+          echo "::add-mask::$KEY"
+          echo "APP=${URL%/}" >> "$GITHUB_ENV"
+          echo "KEY=$KEY" >> "$GITHUB_ENV"
       - name: Wake the app (free Render services sleep when idle)
         run: |
           for i in 1 2 3 4 5 6; do
-            curl -fsS --max-time 60 "${{ secrets.APP_URL }}/api/health" && break
+            curl -fsS --max-time 60 "$APP/api/health" && break
             sleep 20
           done
       - name: Run
@@ -30,4 +41,4 @@ jobs:
           TASK="search"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then TASK="${{ github.event.inputs.task }}"; fi
           if [ "${{ github.event.schedule }}" = "5 23 * * *" ] || [ "${{ github.event.schedule }}" = "5 0 * * *" ]; then TASK="report"; fi
-          curl -fsS --max-time 600 -X POST -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" "${{ secrets.APP_URL }}/api/cron/${TASK}"
+          curl -fsS --max-time 600 -X POST -H "Authorization: Bearer $KEY" "$APP/api/cron/${TASK}"
