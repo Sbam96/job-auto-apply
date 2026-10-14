@@ -36,3 +36,15 @@ export function waitingReason(app: WaitingApp, autoThreshold = AUTO_SUBMIT_THRES
     : details[0];
   return { short, details };
 }
+
+// Queued applications the worker can't submit on its own: it fills them in review mode and you press submit.
+export function needsReviewMode(app: Pick<WaitingApp, "status" | "ats">) {
+  return app.status === "queued" && !(app.ats && (SIMPLE_ATS as readonly string[]).includes(app.ats));
+}
+
+export function workerLine(seenAt: Date | null, now: Date): string {
+  if (!seenAt) return "Your laptop worker hasn't connected yet.";
+  const mins = Math.round((now.getTime() - seenAt.getTime()) / 60000);
+  const when = mins < 2 ? "just now" : mins < 60 ? `${mins} minutes ago` : mins < 60 * 24 ? `${Math.round(mins / 60)} hour${Math.round(mins / 60) === 1 ? "" : "s"} ago` : `on ${seenAt.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
+  return `Your laptop worker last checked in ${when}.`;
+}

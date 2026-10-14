@@ -200,3 +200,14 @@ d("TL-06 waiting applications use the latest CV", () => {
     expect(isStale({ ...app, status: "applied" }, changed)).toBe(false);
   });
 });
+
+d("TR-06 worker check-ins", () => {
+  test("TR-06 using the worker key records when the worker last checked in", async () => {
+    const u = await verifiedUser("tr6@example.com");
+    expect(await store.workerSeenAt(db, u.id)).toBeNull();
+    const token = await store.newWorkerToken(db, u.id);
+    expect((await store.userForWorker(db, token))?.id).toBe(u.id);
+    expect(await store.workerSeenAt(db, u.id)).toBeInstanceOf(Date);
+    expect(await store.userForWorker(db, "jaa_wrong")).toBeNull();
+  });
+});

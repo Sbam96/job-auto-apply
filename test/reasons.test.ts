@@ -27,3 +27,20 @@ describe("TR-05 why an application is waiting", () => {
     expect(r.details).toEqual(["Why Acme?: essay question", "CAPTCHA: the form has a CAPTCHA"]);
   });
 });
+
+describe("TR-06 the dashboard says whether the worker is running", () => {
+  test("TR-06 queued jobs on forms the worker can't submit alone are marked for review mode", async () => {
+    const { needsReviewMode } = await import("@/lib/reasons");
+    expect(needsReviewMode({ status: "queued", ats: null })).toBe(true);
+    expect(needsReviewMode({ status: "queued", ats: "greenhouse" })).toBe(false);
+    expect(needsReviewMode({ status: "needs_approval", ats: null })).toBe(false);
+  });
+  test("TR-06 the worker's last check-in is shown in plain words", async () => {
+    const { workerLine } = await import("@/lib/reasons");
+    const now = new Date("2026-10-14T12:00:00Z");
+    expect(workerLine(null, now)).toBe("Your laptop worker hasn't connected yet.");
+    expect(workerLine(new Date("2026-10-14T11:59:30Z"), now)).toBe("Your laptop worker last checked in just now.");
+    expect(workerLine(new Date("2026-10-14T11:20:00Z"), now)).toBe("Your laptop worker last checked in 40 minutes ago.");
+    expect(workerLine(new Date("2026-10-14T09:00:00Z"), now)).toBe("Your laptop worker last checked in 3 hours ago.");
+  });
+});

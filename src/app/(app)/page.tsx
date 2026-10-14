@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { waitingReason } from "@/lib/reasons";
+import { needsReviewMode, waitingReason, workerLine } from "@/lib/reasons";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { dashboardCounts, getProfile, lastSearch, listApplications } from "@/lib/store";
+import { dashboardCounts, getProfile, lastSearch, listApplications, workerSeenAt } from "@/lib/store";
 import { Card, Empty, Score, StatusBadge, TextLink } from "@/components/ui";
 import { LastSearch } from "./LastSearch";
 import { RouteMap } from "./RouteMap";
@@ -24,6 +24,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     lastSearch(db, user.id),
     searchParams,
   ]);
+  const seenAt = await workerSeenAt(db, user.id);
+  const reviewOnly = recent.filter(needsReviewMode).length;
   const firstName = profile.fullName.trim().split(/\s+/)[0];
   const waitingCount = waiting.length;
   const queued = counts.queued ?? 0;
@@ -44,7 +46,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       : waitingCount > 0
         ? `${waitingCount} ${waitingCount === 1 ? "application needs" : "applications need"} you before ${waitingCount === 1 ? "it goes" : "they go"} out.`
         : queued > 0
-          ? `Nothing needs you. ${queued} ${queued === 1 ? "is" : "are"} queued for your laptop worker.`
+          ? `Nothing needs you. ${queued} ${queued === 1 ? "is" : "are"} queued for your laptop worker.${reviewOnly ? ` ${reviewOnly === queued ? (queued === 1 ? "It's" : "All of them are") : `${reviewOnly} of them are`} on forms it can't submit alone, so run it in review mode.` : ""} ${workerLine(seenAt, new Date())}`
           : "Nothing needs you right now. The next search runs automatically.";
 
   return (

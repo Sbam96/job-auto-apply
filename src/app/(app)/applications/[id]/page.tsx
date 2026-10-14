@@ -8,7 +8,7 @@ import { freshTailored } from "@/lib/refresh";
 import { requireUser } from "@/lib/session";
 import { events, getApplication, getProfile, submissions } from "@/lib/store";
 import { nextStatuses } from "@/lib/status";
-import { waitingReason } from "@/lib/reasons";
+import { needsReviewMode, waitingReason } from "@/lib/reasons";
 import { answerAuthQuestion, immigrationText } from "@/lib/workauth";
 import { Card, PageHeader, Score, StatusBadge, buttonClass, secondaryButtonClass } from "@/components/ui";
 import { CopyButton } from "./CopyButton";
@@ -46,7 +46,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             Check the CV and answers below. Approving queues it for your laptop worker to submit. If you&apos;d rather apply yourself, open the job, apply, then mark it applied.
           </p>
           <div className="flex flex-wrap gap-2">
-            <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="queued" /><button className={buttonClass}>Approve and queue</button></form>
+            <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="queued" /><button className={buttonClass}>{app.status === "needs_action" ? "Send back to the worker" : "Approve and queue"}</button></form>
             <a href={app.url} target="_blank" rel="noopener noreferrer" className={secondaryButtonClass}>Open the job ↗</a>
             <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="applied" /><button className={secondaryButtonClass}>I applied myself</button></form>
             <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="skipped" /><button className={secondaryButtonClass}>Skip this one</button></form>
@@ -57,7 +57,10 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
       {app.status === "queued" && (
         <Card title="Queued to submit" className="mb-6">
           <p className="mb-4 text-sm text-muted">
-            Your laptop worker will submit this the next time it runs. Changed your mind? Cancel it, or send it back for your approval so it waits until you say go.
+            {needsReviewMode(app)
+              ? <>The worker can&apos;t submit this form on its own. Run it in review mode on your laptop (<code>npm run worker -- --review</code>): it opens the form, fills what it can, and you press submit. Or open the job and apply yourself.</>
+              : <>Your laptop worker will submit this the next time it runs (<code>npm run worker</code>).</>}
+            {" "}Changed your mind? Cancel it, or send it back for your approval so it waits until you say go.
           </p>
           <div className="flex flex-wrap gap-2">
             <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="skipped" /><input type="hidden" name="note" value="Cancelled before it was submitted" /><button className={secondaryButtonClass}>Cancel this application</button></form>

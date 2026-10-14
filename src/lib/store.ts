@@ -106,9 +106,15 @@ export async function newWorkerToken(db: Db, userId: string): Promise<string> {
 
 export async function userForWorker(db: Db, token: string | null): Promise<User | null> {
   if (!token) return null;
+  // Records when the worker last checked in, so the dashboard can show whether it's running.
   const { rows } = await db.query<{ id: string; email: string; verified_at: Date | null }>(
-    "SELECT id, email, verified_at FROM users WHERE worker_token_hash = $1 AND verified_at IS NOT NULL", [hashToken(token)]);
+    "UPDATE users SET worker_seen_at = now() WHERE worker_token_hash = $1 AND verified_at IS NOT NULL RETURNING id, email, verified_at", [hashToken(token)]);
   return rows[0] ? { id: rows[0].id, email: rows[0].email, verifiedAt: rows[0].verified_at } : null;
+}
+
+export async function workerSeenAt(db: Db, userId: string): Promise<Date | null> {
+  const { rows } = await db.query<{ worker_seen_at: Date | null }>("SELECT worker_seen_at FROM users WHERE id = $1", [userId]);
+  return rows[0]?.worker_seen_at ?? null;
 }
 
 // ---------- profile ----------
