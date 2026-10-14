@@ -10,6 +10,14 @@ export interface ScannedField extends FormQuestion { selector: string; name: str
 // form is on, which may not be the page passed in.
 const FIELDS = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="search"]), textarea, select';
 
+// The worker runs through tsx, which wraps named functions in a `__name(...)` helper. Code sent into
+// the page with evaluate() keeps those calls, but the page has no such helper, so every read failed
+// with "__name is not defined". This defines a harmless one in the page first.
+const NAME_SHIM = "globalThis.__name = globalThis.__name || ((f) => f);";
+export async function prepare(page: Page) {
+  await page.evaluate(NAME_SHIM).catch(() => {});
+}
+
 export async function fieldCount(page: Page) {
   return page.locator(FIELDS).count().catch(() => 0);
 }
@@ -49,6 +57,7 @@ export async function hasCaptcha(page: Page) {
 
 // Lists every fillable field with its human label, in page order.
 export async function scanForm(page: Page): Promise<ScannedField[]> {
+  await prepare(page);
   return page.evaluate(() => {
     const out: { label: string; type: string; required: boolean; options?: string[]; maxLength?: number; selector: string; name: string }[] = [];
     const seenRadio = new Set<string>();

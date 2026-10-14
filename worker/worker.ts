@@ -50,7 +50,8 @@ async function main() {
   const files = join(here, ".files");
   mkdirSync(files, { recursive: true });
   // A persistent browser profile keeps you signed in to any job sites between runs.
-  const context: BrowserContext = await chromium.launchPersistentContext(join(here, ".profile"), { headless, viewport: { width: 1280, height: 900 } });
+  const context: BrowserContext = await chromium.launchPersistentContext(join(here, ".profile"), { headless, viewport: { width: 1280, height: 900 }, executablePath: process.env.CHROMIUM_PATH || undefined });
+  await context.addInitScript("globalThis.__name = globalThis.__name || ((f) => f);"); // see prepare() in formfill.ts
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   let done = 0;
 

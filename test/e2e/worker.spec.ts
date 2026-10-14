@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { canAutoSubmit, planForm } from "../../src/lib/forms";
 import { emptyProfile } from "../../src/lib/cv";
 import { IMMIGRATION_TEXT } from "../../src/lib/workauth";
-import { fillForm, hasCaptcha, openForm, scanForm } from "../../worker/formfill";
+import { fillForm, hasCaptcha, openForm, prepare, scanForm } from "../../worker/formfill";
 import { pathToFileURL } from "node:url";
 
 const profile = { ...emptyProfile(), fullName: "Alex Example", contactEmail: "alex@example.com", phone: "+44 7700 900000", linkedin: "https://linkedin.com/in/alex", homeCity: "Manchester, UK", expectedSalary: { usd: 110000, gbp: 60000 } };
@@ -110,4 +110,14 @@ test("AP-03 a page with no form is reported, not mistaken for one", async ({ pag
   writeFileSync(file, "<!doctype html><html><body><h1>Business Analyst</h1><p>Sign in to apply.</p></body></html>");
   const formPage = await openForm(page, pathToFileURL(file).href, null);
   expect((await scanForm(formPage)).length).toBeLessThan(2);
+});
+
+test("BUG 4: on a laptop the worker runs through tsx, which adds __name() calls the page doesn't have; every form read failed", async ({ page }) => {
+  await page.setContent(form());
+  // What tsx produces for a named function inside evaluate():
+  const compiled = "(() => { const f = __name(() => 1, 'f'); return f(); })()";
+  await expect(page.evaluate(compiled)).rejects.toThrow(/__name is not defined/);
+  await prepare(page);
+  expect(await page.evaluate(compiled)).toBe(1);
+  expect((await scanForm(page)).length).toBeGreaterThan(5);
 });
