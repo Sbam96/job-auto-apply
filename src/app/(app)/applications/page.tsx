@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { listApplications } from "@/lib/store";
+import { setStatusAction } from "@/app/actions";
 import type { Status } from "@/lib/config";
 import { Empty, PageHeader, Score, StatusBadge } from "@/components/ui";
 
@@ -46,7 +47,15 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                   </td>
                   <td className="px-4 py-3 text-muted">{a.region}, {a.mode}</td>
                   <td className="px-4 py-3"><Score value={a.score} /></td>
-                  <td className="px-4 py-3"><StatusBadge status={a.status} /></td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={a.status} />
+                    {a.status === "queued" && (
+                      <form action={setStatusAction} className="mt-1">
+                        <input type="hidden" name="id" value={a.id} /><input type="hidden" name="status" value="skipped" /><input type="hidden" name="note" value="Cancelled before it was submitted" />
+                        <button className="text-xs text-muted underline hover:text-bad" aria-label={`Cancel ${a.title} at ${a.company}`}>Cancel</button>
+                      </form>
+                    )}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3 text-muted">{a.updated_at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</td>
                 </tr>
               ))}

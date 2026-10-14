@@ -10,6 +10,7 @@ import { createInterface } from "node:readline/promises";
 import { canAutoSubmit, planForm } from "../src/lib/forms";
 import type { Profile } from "../src/lib/types";
 import { fillForm, hasCaptcha, openForm, scanForm, submitForm } from "./formfill";
+import type { Page } from "@playwright/test";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -73,40 +74,64 @@ async function main() {
         await page.pdf({ path: coverPath, format: "A4" });
       }
 
+      // Review mode always waits for a clear answer, so an application is never picked up twice by accident.
+      const ask = async (prompt: string) => {
+        for (;;) {
+          const a = (await rl.question(prompt)).trim().toLowerCase();
+          if (["s", "l", "k", "q"].includes(a)) return a;
+          console.log("  Type s, l, k or q.");
+        }
+      };
+      const closeAll = async (...pages: Page[]) => { for (const p of new Set(pages)) await p.close().catch(() => {}); };
+      let formPage: Page = page;
+      let quit = false;
       try {
-        await openForm(page, app.url, app.ats);
-        const fields = await scanForm(page);
+        formPage = await openForm(page, app.url, app.ats);
+        const fields = await scanForm(formPage);
+        if (fields.length < 2) throw new Error("couldn't find the application form on the job page (the employer's site may need you to sign in or click through first)");
         const place = { region: app.region, mode: app.mode, countries: app.countries };
-        const plan = planForm(fields, next.profile, place, { coverLetter: next.coverLetter, captcha: await hasCaptcha(page) });
-        const entered = await fillForm(page, fields, plan, { cv: cvPath, cover: coverPath });
+        const plan = planForm(fields, next.profile, place, { coverLetter: next.coverLetter, captcha: await hasCaptcha(formPage) });
+        const entered = await fillForm(formPage, fields, plan, { cv: cvPath, cover: coverPath });
         const auto = app.status === "queued" && canAutoSubmit(plan) && !review;
 
         if (auto) {
-          const ok = await submitForm(page);
-          if (ok) { await report({ id: app.id, outcome: "applied", targetUrl: page.url(), payload: entered }); console.log("  ✓ Submitted."); }
+          const ok = await submitForm(formPage);
+          if (ok) { await report({ id: app.id, outcome: "applied", targetUrl: formPage.url(), payload: entered }); console.log("  ✓ Submitted."); }
           else { await report({ id: app.id, outcome: "needs_action", unresolved: [{ label: "Submit", reason: "no confirmation after submitting; check the page" }] }); console.log("  ! No confirmation; flagged for you."); }
-          await page.close();
+          await closeAll(formPage, page);
         } else if (!review) {
           // Unattended: leave it for the user and email them (TR-03).
           const why = plan.captcha ? [{ label: "CAPTCHA", reason: "the form has a CAPTCHA" }, ...plan.unresolved] : plan.unresolved;
           await report({ id: app.id, outcome: "needs_action", unresolved: why });
           console.log(`  ! Needs you: ${why.map((u) => u.label).join("; ")}`);
-          await page.close();
+          await closeAll(formPage, page);
         } else {
           // Review: everything known is filled in; the user checks it and clicks submit.
           if (plan.unresolved.length) console.log(`  Still to answer: ${plan.unresolved.map((u) => u.label).join("; ")}`);
-          const answer = (await rl.question("  Check the browser, submit it there, then type: [s] submitted  [l] later  [k] skip  [q] quit > ")).trim().toLowerCase();
-          if (answer === "s") await report({ id: app.id, outcome: "applied", targetUrl: page.url(), payload: entered });
+          const answer = await ask("  Check the browser, submit it there, then type: [s] submitted  [l] later  [k] skip  [q] quit > ");
+          if (answer === "s") await report({ id: app.id, outcome: "applied", targetUrl: formPage.url(), payload: entered });
           else if (answer === "k") await report({ id: app.id, outcome: "skipped" });
           else if (answer === "l") await report({ id: app.id, outcome: "needs_action", unresolved: plan.unresolved.length ? plan.unresolved : [{ label: "Review", reason: "left for later" }] });
-          await page.close();
-          if (answer === "q") break;
+          await closeAll(formPage, page);
+          quit = answer === "q";
         }
       } catch (err) {
-        console.log(`  ! ${(err as Error).message.split("\n")[0]}`);
-        await report({ id: app.id, outcome: "needs_action", unresolved: [{ label: "Form", reason: "the worker couldn't open or read this form" }] }).catch(() => {});
-        await page.close().catch(() => {});
+        const reason = (err as Error).message.split("\n")[0];
+        console.log(`  ! ${reason}`);
+        if (review) {
+          // Keep the browser open so you can apply by hand. Your CV and cover letter are saved here:
+          console.log(`  Apply in the browser yourself if you like. Your files: ${cvPath}${coverPath ? ` and ${coverPath}` : ""}`);
+          const answer = await ask("  Then type: [s] submitted  [l] later  [k] skip  [q] quit > ");
+          if (answer === "s") await report({ id: app.id, outcome: "applied", targetUrl: formPage.url(), payload: { note: "Submitted by hand" } });
+          else if (answer === "k") await report({ id: app.id, outcome: "skipped" });
+          else await report({ id: app.id, outcome: "needs_action", unresolved: [{ label: "Form", reason }] }).catch(() => {});
+          quit = answer === "q";
+        } else {
+          await report({ id: app.id, outcome: "needs_action", unresolved: [{ label: "Form", reason }] }).catch(() => {});
+        }
+        await closeAll(formPage, page);
       }
+      if (quit) break;
       done += 1;
       // Be gentle with job sites between unattended submissions.
       if (!review) await new Promise((r) => setTimeout(r, 20_000 + Math.random() * 40_000));

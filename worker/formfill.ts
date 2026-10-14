@@ -5,17 +5,42 @@ import type { FormPlan, FormQuestion } from "../src/lib/forms";
 
 export interface ScannedField extends FormQuestion { selector: string; name: string }
 
-// Opens the form: some job pages need an "Apply" click first.
-export async function openForm(page: Page, url: string, ats: string | null) {
+// Opens the form. Job pages often need an "Apply" click first, and job-board pages (Himalayas,
+// Remote OK) send you on to the employer's site, sometimes in a new tab. Returns the page the
+// form is on, which may not be the page passed in.
+const FIELDS = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="search"]), textarea, select';
+
+export async function fieldCount(page: Page) {
+  return page.locator(FIELDS).count().catch(() => 0);
+}
+
+async function clickApply(page: Page): Promise<Page> {
+  const apply = page
+    .getByRole("link", { name: /apply for this (job|position|role)|apply now|apply on (company|employer)|apply on .*site|^apply$|apply ↗/i })
+    .or(page.getByRole("button", { name: /apply for this (job|position|role)|apply now|^apply$/i }))
+    .first();
+  if (!(await apply.count().catch(() => 0))) return page;
+  const popup = page.context().waitForEvent("page", { timeout: 6000 }).catch(() => null);
+  await apply.click().catch(() => {});
+  const next = (await popup) ?? page;
+  await next.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => {});
+  await next.waitForTimeout(2000);
+  return next;
+}
+
+export async function openForm(page: Page, url: string, ats: string | null): Promise<Page> {
   const target = ats === "lever" && !/\/apply$/.test(url) ? `${url.replace(/\/$/, "")}/apply`
     : ats === "ashby" && !/\/application$/.test(url) ? `${url.replace(/\/$/, "")}/application`
     : url;
   await page.goto(target, { waitUntil: "domcontentloaded", timeout: 45_000 });
   await page.waitForTimeout(1500);
-  if ((await page.locator("form input, form textarea").count()) === 0) {
-    const apply = page.getByRole("button", { name: /apply/i }).or(page.getByRole("link", { name: /apply for this job|apply now|^apply$/i })).first();
-    if (await apply.count()) { await apply.click().catch(() => {}); await page.waitForTimeout(1500); }
+  let current = page;
+  // Up to two hops: job board → employer's job page → its application form.
+  for (let hop = 0; hop < 2; hop++) {
+    if ((await fieldCount(current)) >= 2) break;
+    current = await clickApply(current);
   }
+  return current;
 }
 
 export async function hasCaptcha(page: Page) {

@@ -204,6 +204,21 @@ test("DP-03 the worker's submission is logged and the application marked applied
   expect((await page.request.get("/api/worker/next?mode=auto", { headers: { Authorization: "Bearer wrong" } })).status()).toBe(401);
 });
 
+test("TR-04 a queued application can be cancelled, and the worker then won't pick it up", async ({ page }) => {
+  await login(page);
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "Generate worker key" }).click();
+  const token = (await page.locator("[data-worker-token]").textContent())!.trim();
+  const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Cancelco", status: "queued" } })).json();
+  await page.goto(`/applications/${id}`);
+  await expect(page.getByRole("heading", { name: "Queued to submit" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel this application" }).click();
+  await expect(page.locator("[data-status]").first()).toHaveAttribute("data-status", "skipped");
+  await expect(page.getByText("Cancelled before it was submitted")).toBeVisible();
+  const next = await (await page.request.get("/api/worker/next?mode=auto", { headers: { Authorization: `Bearer ${token}` } })).json();
+  expect(next.application?.id).not.toBe(id);
+});
+
 test("TR-03 the worker flagging a form emails the user", async ({ page }) => {
   await login(page);
   await page.goto("/settings");

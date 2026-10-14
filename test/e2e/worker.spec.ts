@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { canAutoSubmit, planForm } from "../../src/lib/forms";
 import { emptyProfile } from "../../src/lib/cv";
 import { IMMIGRATION_TEXT } from "../../src/lib/workauth";
-import { fillForm, hasCaptcha, scanForm } from "../../worker/formfill";
+import { fillForm, hasCaptcha, openForm, scanForm } from "../../worker/formfill";
+import { pathToFileURL } from "node:url";
 
 const profile = { ...emptyProfile(), fullName: "Alex Example", contactEmail: "alex@example.com", phone: "+44 7700 900000", linkedin: "https://linkedin.com/in/alex", homeCity: "Manchester, UK", expectedSalary: { usd: 110000, gbp: 60000 } };
 const US = { region: "US", mode: "remote" } as const;
@@ -89,4 +90,24 @@ test("AP-03 a CAPTCHA stops the worker from auto-submitting", async ({ page }) =
   const plan = planForm(fields, profile, US, { captcha: await hasCaptcha(page) });
   expect(plan.captcha).toBe(true);
   expect(canAutoSubmit(plan)).toBe(false);
+});
+
+test("AP-01 a job-board page that opens the employer's form in a new tab is followed to the form", async ({ page }) => {
+  const dir = mkdtempSync(join(tmpdir(), "jaa-board-"));
+  const formFile = join(dir, "form.html");
+  writeFileSync(formFile, form());
+  const boardFile = join(dir, "board.html");
+  writeFileSync(boardFile, `<!doctype html><html><body><h1>Business Analyst at Acme</h1><p>Found on a job board.</p><a href="${pathToFileURL(formFile).href}" target="_blank">Apply on company site</a></body></html>`);
+  const formPage = await openForm(page, pathToFileURL(boardFile).href, null);
+  expect(formPage).not.toBe(page);
+  const fields = await scanForm(formPage);
+  expect(fields.map((f) => f.label)).toContain("Email");
+});
+
+test("AP-03 a page with no form is reported, not mistaken for one", async ({ page }) => {
+  const dir = mkdtempSync(join(tmpdir(), "jaa-none-"));
+  const file = join(dir, "job.html");
+  writeFileSync(file, "<!doctype html><html><body><h1>Business Analyst</h1><p>Sign in to apply.</p></body></html>");
+  const formPage = await openForm(page, pathToFileURL(file).href, null);
+  expect((await scanForm(formPage)).length).toBeLessThan(2);
 });

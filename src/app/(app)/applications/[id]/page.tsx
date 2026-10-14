@@ -54,6 +54,18 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
         </Card>
       )}
 
+      {app.status === "queued" && (
+        <Card title="Queued to submit" className="mb-6">
+          <p className="mb-4 text-sm text-muted">
+            Your laptop worker will submit this the next time it runs. Changed your mind? Cancel it, or send it back for your approval so it waits until you say go.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="skipped" /><input type="hidden" name="note" value="Cancelled before it was submitted" /><button className={secondaryButtonClass}>Cancel this application</button></form>
+            <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="needs_approval" /><input type="hidden" name="note" value="Taken out of the queue" /><button className={secondaryButtonClass}>Back to my approval</button></form>
+          </div>
+        </Card>
+      )}
+
       {app.flags.length > 0 && (
         <Card title="Notes" className="mb-6">
           <ul className="list-disc space-y-1 pl-5 text-sm text-warn">{app.flags.map((f, i) => <li key={i}>{f}</li>)}</ul>
@@ -109,7 +121,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             </dl>
           </Card>
 
-          {moves.length > 0 && !waiting && (
+          {moves.length > 0 && !waiting && app.status !== "queued" && (
             <Card title="Update status">
               <form action={setStatusAction} className="space-y-3">
                 <input type="hidden" name="id" value={id} />
