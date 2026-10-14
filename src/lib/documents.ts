@@ -58,6 +58,20 @@ export function coverBlocks(p: Profile, letter: string, job: { title: string; co
   return out;
 }
 
+// DOC-05: the cover letter as plain text for pasting into an application form's text box:
+// greeting, letter and sign-off, without the address header the files have.
+export function coverText(p: Profile, letter: string): string {
+  const blocks = coverBlocks(p, letter, { title: "", company: "" }, new Date());
+  const start = blocks.findIndex((b) => b.kind === "para" && b.text.startsWith("Re: "));
+  const body: string[] = [];
+  for (const b of blocks.slice(start + 1)) {
+    if (b.kind === "gap") { if (body.length && body[body.length - 1] !== "") body.push(""); }
+    else if (b.kind === "para") body.push(b.text);
+  }
+  // Keep the sign-off and name on consecutive lines.
+  return body.join("\n").replace(/\n{3,}/g, "\n\n").replace(/(Kind regards,|regards,|Sincerely,|faithfully,)\n\n/gi, "$1\n").trim();
+}
+
 export const fileName = (p: Profile, doc: "cv" | "cover", company: string, ext: "pdf" | "docx") => {
   const slug = (s: string) => String(s ?? "").normalize("NFKD").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 40);
   return `${slug(p.fullName) || "CV"}-${doc === "cv" ? "CV" : "Cover-Letter"}-${slug(company) || "job"}.${ext}`;

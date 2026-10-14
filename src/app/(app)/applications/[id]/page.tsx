@@ -10,6 +10,7 @@ import { events, getApplication, getProfile, saveDirectLink } from "@/lib/store"
 import { nextStatuses } from "@/lib/status";
 import { answerAuthQuestion, immigrationText } from "@/lib/workauth";
 import { Card, PageHeader, Score, StatusBadge, buttonClass, secondaryButtonClass } from "@/components/ui";
+import { coverText } from "@/lib/documents";
 import { CopyButton } from "./CopyButton";
 import { DocEditor } from "./DocEditor";
 
@@ -81,7 +82,9 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
               <a href={dl("cv", "docx")} className={secondaryButtonClass}>CV (Word)</a>
               {t.coverLetter && <a href={dl("cover", "pdf")} className={secondaryButtonClass}>Cover letter (PDF)</a>}
               {t.coverLetter && <a href={dl("cover", "docx")} className={secondaryButtonClass}>Cover letter (Word)</a>}
+              {t.coverLetter && <CopyButton text={coverText(profile, t.coverLetter)} label="Copy cover letter text" className={secondaryButtonClass} />}
             </div>
+            {t.coverLetter && <p className="mt-2 text-xs text-muted">For forms with a cover letter box: copy the text and paste it in. It includes the greeting and your sign-off.</p>}
             {!t.coverLetter && ready && <p className="mt-2 text-xs text-muted">No cover letter: you can work here without sponsorship and the job doesn&apos;t ask for one.</p>}
           </li>
           {ready && (

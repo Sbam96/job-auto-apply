@@ -55,3 +55,11 @@ describe("DOC-03 the cover letter file", () => {
     expect(paras[paras.length - 1]).toBe("Alex Example");
   });
 });
+
+describe("DOC-05 the cover letter as text to paste", () => {
+  test("DOC-05 has the greeting, the letter and a sign-off with your name, but no address header", async () => {
+    const { coverText } = await import("@/lib/documents");
+    const text = coverText(p, "I'm applying for the Business Analyst role.\n\nI have mapped claims processes.");
+    expect(text).toBe("Dear Hiring Manager,\n\nI'm applying for the Business Analyst role.\n\nI have mapped claims processes.\n\nKind regards,\nAlex Example");
+  });
+});

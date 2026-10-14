@@ -1,15 +1,15 @@
 "use client";
 import { useState } from "react";
 
-export function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text, label = "Copy", className = "text-xs font-medium text-accent" }: { text: string; label?: string; className?: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
       type="button"
-      className="text-xs font-medium text-accent"
+      className={className}
       onClick={async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500); } catch { /* clipboard blocked */ } }}
     >
-      {done ? "Copied" : "Copy"}
+      {done ? "Copied" : label}
     </button>
   );
 }

@@ -215,13 +215,19 @@ test("DOC-01 DOC-02 the CV downloads as a PDF and as a Word file", async ({ page
   expect((await page.request.get(`/applications/${id}/download?doc=cover&format=pdf`)).status()).toBe(404);
 });
 
-test("DOC-03 the cover letter downloads when the match has one", async ({ page }) => {
+test("DOC-03 DOC-05 the cover letter downloads, or copies as text, when the match has one", async ({ page }) => {
   await login(page);
   const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Letterco", region: "US", coverLetter: "I would bring strong requirements skills to Letterco." } })).json();
   await page.goto(`/applications/${id}`);
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Cover letter (Word)" }).click()]);
   expect(download.suggestedFilename()).toBe("Alex-Example-Cover-Letter-Letterco.docx");
   await expect(page.getByRole("link", { name: "Cover letter (PDF)" })).toBeVisible();
+  // DOC-05: copy the text to paste into a form's cover letter box.
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy cover letter text" }).click();
+  await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+  const pasted = await page.evaluate(() => navigator.clipboard.readText());
+  expect(pasted).toBe("Dear Hiring Manager,\n\nI would bring strong requirements skills to Letterco.\n\nKind regards,\nAlex Example");
 });
 
 test("DOC-04 you can edit the text before downloading, and regenerate it", async ({ page }) => {
