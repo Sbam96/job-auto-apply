@@ -7,14 +7,17 @@ import { companyKey } from "./pipeline";
 export interface PageInfo { url: string; title?: string; company?: string; text?: string }
 export interface MatchCandidate { id: number; title: string; company: string; url: string; direct_url: string | null }
 
+// Tracking and navigation parameters that don't change which job a page is.
+const NOISE = /^(utm_.*|gclid|fbclid|msclkid|ref|referrer|source|src|lever-source.*|lever-origin|gh_src|trk|trackingid|refid|from|origin|mode|step|page)$/i;
+
 // Same job page, ignoring tracking parameters, fragments and the apply/application step.
+// Other parameters stay: some sites name the job only in the query (?gh_jid=123, ?jobId=…).
 export function normUrl(u: string): string {
   try {
     const x = new URL(u);
     const path = x.pathname.replace(/\/+$/, "").replace(/\/(apply|application|applications\/new)$/i, "");
-    // Greenhouse embeds keep the job in ?gh_jid=; keep that one parameter.
-    const jid = x.searchParams.get("gh_jid");
-    return `${x.hostname.replace(/^www\./, "")}${path}${jid ? `?gh_jid=${jid}` : ""}`.toLowerCase();
+    const query = [...x.searchParams.entries()].filter(([k]) => !NOISE.test(k)).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join("&");
+    return `${x.hostname.replace(/^www\./, "")}${path}${query ? `?${query}` : ""}`.toLowerCase();
   } catch {
     return String(u ?? "").toLowerCase();
   }

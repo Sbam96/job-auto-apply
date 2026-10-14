@@ -76,7 +76,7 @@ export interface Salary {
 
 // A job from any source, in one shape (SR-01 to SR-04).
 export interface Job {
-  source: "remotive" | "himalayas" | "remoteok" | "greenhouse" | "lever" | "ashby";
+  source: "remotive" | "himalayas" | "remoteok" | "greenhouse" | "lever" | "ashby" | "page"; // "page": added from the browser extension (EX-06)
   sourceId: string;
   company: string;
   title: string;

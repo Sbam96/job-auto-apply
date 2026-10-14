@@ -112,6 +112,26 @@ test("EX-02 EX-03 it recognises the job and fills the form: details, authorisati
   if (process.env.SHOTS) { await popup.setViewportSize({ width: 360, height: 560 }); await popup.screenshot({ path: `${process.env.SHOTS}/popup.png` }); await form.screenshot({ path: `${process.env.SHOTS}/form.png`, fullPage: true }); }
 });
 
+test("EX-06 on a job you found yourself, it makes a match from the page, then fills it", async ({ baseURL }) => {
+  const form = await ext.newPage();
+  await form.goto(`${baseURL}/api/test/form?co=Newco`);
+  const popup = await openPopupFor(`${baseURL}/api/test/form?co=Newco`);
+  await expect(popup.locator("#pick")).toBeVisible();
+  await expect(popup.locator("#pickText")).toHaveText("This page isn't one of your matches yet.");
+  await popup.getByRole("button", { name: "Make a match from this page" }).click();
+  await expect(popup.locator("#jobEyebrow")).toHaveText("New match from this page");
+  await expect(popup.locator("#jobMeta")).toContainText("Newco");
+  await expect(popup.locator("#status")).toHaveText("Documents ready. Press Fill this form.");
+  await popup.getByRole("button", { name: "Fill this form" }).click();
+  await expect(popup.locator("#status")).toHaveText("Check everything, then press the site's submit button.");
+  await expect(form.locator("#first_name")).toHaveValue("Alex");
+  await expect(form.locator("#auth")).toHaveValue("No"); // the page says United States
+  expect(await form.locator("#resume").evaluate((el: HTMLInputElement) => el.files?.[0]?.name)).toBe("Alex-Example-CV-Newco.pdf");
+  // Opening it again on the same page finds the match it made, rather than making another.
+  const again = await openPopupFor(`${baseURL}/api/test/form?co=Newco`);
+  await expect(again.locator("#jobEyebrow")).toHaveText("Your match for this page");
+});
+
 test("EX-05 Mark as applied updates the app", async ({ page, baseURL }) => {
   const popup = await openPopupFor(`${baseURL}/api/test/form`);
   await popup.getByRole("button", { name: "Mark as applied" }).click();

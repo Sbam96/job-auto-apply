@@ -30,3 +30,5 @@ button.link { border: 0; background: none; padding: 0; color: var(--muted); font
 #status.error { color: var(--red); }
 footer { display: flex; justify-content: space-between; font-size: 13px; border-top: 1px solid var(--line); padding-top: 8px; }
 footer a { color: var(--blue); }
+.wide { width: 100%; margin: 4px 0 6px; }
+.small { font-size: 12px; }

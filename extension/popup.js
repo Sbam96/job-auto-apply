@@ -100,17 +100,35 @@ async function start() {
     matchId = match.id;
     await chrome.storage.session.set({ [`tab:${tabId}`]: match.id });
     showJob(match, res.match ? "Your match for this page" : "Still filling");
-  } else if (res.ready.length) {
-    $("pick").hidden = false;
-    $("pickSelect").innerHTML = `<option value="">Choose a match…</option>${res.ready.map((r) => `<option value="${r.id}">${escapeHtml(r.title)} at ${escapeHtml(r.company)}</option>`).join("")}`;
   } else {
-    $("pickText").textContent = "This page isn't one of your matches, and you have none ready.";
     $("pick").hidden = false;
-    $("pickSelect").hidden = true;
+    $("pickList").hidden = !res.ready.length;
+    $("pickSelect").innerHTML = `<option value="">Choose a match…</option>${res.ready.map((r) => `<option value="${r.id}">${escapeHtml(r.title)} at ${escapeHtml(r.company)}</option>`).join("")}`;
   }
   const frames = await inFrames(() => window.__jaa.scan().length);
   const fieldCount = frames.reduce((n, f) => n + (f.result ?? 0), 0);
   status(fieldCount >= 2 ? "" : "There's no application form on this page yet. Click Apply on the page, then open me again.");
+}
+
+// ---------- a job you found yourself (EX-06) ----------
+
+async function capture() {
+  $("captureBtn").disabled = true;
+  status("Reading the job and tailoring your CV… this takes about 20 seconds.");
+  try {
+    await inject();
+    const [{ result: page }] = await inFrames(() => window.__jaa.readPage(), [], [0]);
+    const res = await post("capture", page);
+    matchId = res.match.id;
+    await chrome.storage.session.set({ [`tab:${tabId}`]: matchId });
+    $("pick").hidden = true;
+    showJob(res.match, res.created ? "New match from this page" : "Already one of your matches");
+    status(page.fieldCount >= 2 ? "Documents ready. Press Fill this form." : "Saved to your matches. Click Apply on the page, then open me again to fill the form.");
+  } catch (err) {
+    status(err.message, true);
+  } finally {
+    $("captureBtn").disabled = false;
+  }
 }
 
 function escapeHtml(s) {
@@ -188,6 +206,7 @@ $("key").addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); 
 $("disconnect").addEventListener("click", disconnect);
 $("fillBtn").addEventListener("click", fill);
 $("appliedBtn").addEventListener("click", markApplied);
+$("captureBtn").addEventListener("click", capture);
 $("copyCover").addEventListener("click", async () => { await navigator.clipboard.writeText(coverText ?? ""); $("copyCover").textContent = "Copied"; setTimeout(() => { $("copyCover").textContent = "Copy cover letter text"; }, 1500); });
 $("pickSelect").addEventListener("change", async (e) => {
   const id = Number(e.target.value);

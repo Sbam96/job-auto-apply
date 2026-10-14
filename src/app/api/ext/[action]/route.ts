@@ -4,6 +4,7 @@
 //   POST /api/ext/plan    {id, fields, captcha}      answers for the form's questions
 //   GET  /api/ext/file?id=&doc=cv|cover    the tailored PDF to attach
 //   POST /api/ext/applied {id}             mark the match applied
+//   POST /api/ext/capture {url,title,company,location,description}   make a match from this page
 import { APPLIED_STATUSES } from "@/lib/config";
 import { getDb } from "@/lib/db";
 import { coverText } from "@/lib/documents";
@@ -13,7 +14,9 @@ import { extensionUser, json } from "@/lib/http";
 import { llmFromEnv } from "@/lib/llm";
 import { findMatchForPage } from "@/lib/pagematch";
 import { freshTailored } from "@/lib/refresh";
-import { getApplication, getProfile, listApplications, setStatus } from "@/lib/store";
+import { getApplication, getProfile, listApplications, PgPipelineStore, setStatus } from "@/lib/store";
+import { captureJob } from "@/lib/capture";
+import { londonDay } from "@/lib/pipeline";
 import type { JobPlace } from "@/lib/workauth";
 
 export const maxDuration = 120;
@@ -56,6 +59,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ action:
     const found = findMatchForPage({ url, title: String(b.title ?? ""), company: String(b.company ?? ""), text: String(b.text ?? "") }, apps);
     const summary = (a: (typeof apps)[number]) => ({ id: a.id, title: a.title, company: a.company, status: a.status, score: a.score, region: a.region, hasCoverLetter: !!a.tailored?.coverLetter });
     return json({ match: found ? summary(found) : null, ready: apps.filter((a) => a.status === "new").slice(0, 30).map(summary) });
+  }
+
+  if (action === "capture") {
+    const page = { url: String(b.url ?? ""), title: String(b.title ?? "").trim(), company: String(b.company ?? "").trim(), location: String(b.location ?? "").trim(), description: String(b.description ?? "") };
+    if (!/^https?:\/\//.test(page.url)) return json({ error: "Open a job page first." }, 400);
+    if (!page.title || page.description.replace(/\s/g, "").length < 200) return json({ error: "Couldn't find a job description on this page. Open the job advert, then try again." }, 422);
+    const now = new Date();
+    const out = await captureJob({ db, store: new PgPipelineStore(db, londonDay(now)), userId: user.id, profile: await getProfile(db, user.id), llm: llmFromEnv(), now }, page);
+    const a = (await getApplication(db, user.id, out.id))!;
+    return json({ created: out.created, match: { id: a.id, title: a.title, company: a.company, status: a.status, score: a.score, region: a.region, hasCoverLetter: !!a.tailored?.coverLetter } });
   }
 
   const id = Number(b.id);

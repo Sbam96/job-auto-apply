@@ -25,8 +25,12 @@
     </div>
     <div id="pick" hidden>
       <p id="pickText">This page isn't one of your matches yet.</p>
-      <label for="pickSelect">Fill it for one of your matches</label>
-      <select id="pickSelect"></select>
+      <button id="captureBtn" class="primary wide">Make a match from this page</button>
+      <p class="muted small">Reads the job from this page and makes a tailored CV for it (and a cover letter when needed). Takes about 20 seconds.</p>
+      <div id="pickList">
+        <label for="pickSelect">Or fill it for one of your matches</label>
+        <select id="pickSelect"></select>
+      </div>
     </div>
     <div class="actions">
       <button id="fillBtn" class="primary" hidden>Fill this form</button>

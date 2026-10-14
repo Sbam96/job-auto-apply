@@ -3,7 +3,7 @@
 export async function GET(req: Request) {
   if (process.env.E2E_HOOKS !== "1") return new Response("Not found", { status: 404 });
   const co = new URL(req.url).searchParams.get("co") ?? "Formco";
-  const posting = { "@context": "https://schema.org", "@type": "JobPosting", title: "Business Analyst", hiringOrganization: { "@type": "Organization", name: co }, jobLocationType: "TELECOMMUTE", jobLocation: { address: { addressCountry: "United States" } }, description: "<p>Write user stories in Jira.</p>" };
+  const posting = { "@context": "https://schema.org", "@type": "JobPosting", title: "Business Analyst", hiringOrganization: { "@type": "Organization", name: co }, jobLocationType: "TELECOMMUTE", jobLocation: { address: { addressCountry: "United States" } }, description: "<p>We're hiring a Business Analyst to join our remote team. You'll gather requirements from stakeholders, write user stories and acceptance criteria in Jira, map processes, and run SQL analysis to support product decisions. 3+ years of experience in an agile environment.</p>" };
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Business Analyst at ${co}</title>
 <script type="application/ld+json">${JSON.stringify(posting)}</script></head><body>
 <h1>Business Analyst</h1><p>${co} · Remote, United States</p>

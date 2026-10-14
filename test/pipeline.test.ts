@@ -144,3 +144,15 @@ describe("search runs", () => {
     expect(store.apps).toHaveLength(0);
   });
 });
+
+describe("EX-06 where a job you found yourself is based", () => {
+  test("EX-06 your location settings first, then what the page names, else assume the UK and say so", async () => {
+    const { placeFor } = await import("@/lib/capture");
+    const p = profile();
+    const page = (location: string, description = "") => ({ url: "https://acme.com/jobs/1", title: "BA", company: "Acme", location, description });
+    expect(placeFor(page("Remote - United States"), p)).toMatchObject({ region: "US", guessed: false });
+    expect(placeFor(page("Toronto, Ontario"), p)).toMatchObject({ region: "CA", guessed: false });
+    expect(placeFor(page("", "This role is open to candidates in Canada."), p)).toMatchObject({ region: "CA", guessed: true });
+    expect(placeFor(page(""), p)).toMatchObject({ region: "UK", guessed: true });
+  });
+});
