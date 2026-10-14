@@ -1,20 +1,29 @@
 import { notFound } from "next/navigation";
-import { setStatusAction } from "@/app/actions";
-import { STATUS_LABELS } from "@/lib/config";
-import { formatMonth } from "@/lib/cv";
+import { blockCompanyAction, setStatusAction } from "@/app/actions";
+import { APPLIED_RETENTION_DAYS, MATCH_EXPIRY_DAYS, STATUS_LABELS } from "@/lib/config";
 import { getDb } from "@/lib/db";
 import { llmFromEnv } from "@/lib/llm";
-import { freshTailored } from "@/lib/refresh";
+import { editedButOutdated, freshTailored } from "@/lib/refresh";
 import { requireUser } from "@/lib/session";
-import { events, getApplication, getProfile, submissions } from "@/lib/store";
+import { events, getApplication, getProfile } from "@/lib/store";
 import { nextStatuses } from "@/lib/status";
-import { needsReviewMode, waitingReason } from "@/lib/reasons";
 import { answerAuthQuestion, immigrationText } from "@/lib/workauth";
 import { Card, PageHeader, Score, StatusBadge, buttonClass, secondaryButtonClass } from "@/components/ui";
 import { CopyButton } from "./CopyButton";
+import { DocEditor } from "./DocEditor";
 
 const AUTH_Q = "Are you legally authorised to work in the country where this job is located?";
 const SPONSOR_Q = "Will you now or in the future require visa sponsorship?";
+const day = 86400000;
+const fmt = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+const EVENT_LABELS: Record<string, string> = {
+  created: "Matched, documents prepared",
+  cv_updated: "Documents refreshed from your updated master CV",
+  edited: "You edited the documents",
+  regenerated: "Documents regenerated",
+  downloaded: "Downloaded",
+};
 
 export default async function ApplicationPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -23,12 +32,29 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
   const db = await getDb();
   const app = await getApplication(db, user.id, id);
   if (!app) notFound();
-  const [profile, history, sent] = await Promise.all([getProfile(db, user.id), events(db, user.id, id), submissions(db, user.id, id)]);
+  const [profile, history] = await Promise.all([getProfile(db, user.id), events(db, user.id, id)]);
   const place = { region: app.region as "US", mode: app.mode as "remote", countries: app.countries };
-  // TL-06: show (and submit) the version tailored from the latest master CV.
+  // TL-06: show (and download) the version tailored from the latest master CV.
   const t = await freshTailored(db, user.id, app, profile, llmFromEnv());
-  const moves = nextStatuses(app.status);
-  const waiting = app.status === "needs_approval" || app.status === "needs_action";
+  const outdated = editedButOutdated({ status: app.status, tailored: t }, profile);
+  const moves = nextStatuses(app.status).filter((s) => !["applied", "dismissed", "new"].includes(s));
+  const ready = app.status === "new";
+  const archived = !!app.applied_at;
+  const dl = (doc: "cv" | "cover", format: "pdf" | "docx") => `/applications/${id}/download?doc=${doc}&format=${format}`;
+  const imm = immigrationText(place);
+
+  const answers: [string, string][] = [
+    ["Authorised to work there?", answerAuthQuestion(AUTH_Q, place, profile.auth) ?? ""],
+    ["Need visa sponsorship?", answerAuthQuestion(SPONSOR_Q, place, profile.auth) ?? ""],
+    ...(imm ? [["Extra information / context box", imm] as [string, string]] : []),
+    ...(profile.noticePeriod ? [["Notice period", profile.noticePeriod] as [string, string]] : []),
+    ...(app.region === "US" && profile.expectedSalary.usd ? [["Expected salary (USD)", `$${profile.expectedSalary.usd.toLocaleString("en-US")}`] as [string, string]] : []),
+    ...(app.region !== "US" && profile.expectedSalary.gbp ? [["Expected salary (GBP)", `£${profile.expectedSalary.gbp.toLocaleString("en-GB")}`] as [string, string]] : []),
+    ...(app.region === "US" && profile.usHoursOverlap ? [["Working hours overlap", profile.usHoursOverlap] as [string, string]] : []),
+    ...(profile.linkedin ? [["LinkedIn", profile.linkedin] as [string, string]] : []),
+    ...(profile.portfolio ? [["Portfolio", profile.portfolio] as [string, string]] : []),
+    ["Diversity questions", Object.values(profile.selfId).every((v) => v === "prefer_not") ? "Prefer not to say / decline to answer" : "As set in Details & answers"],
+  ];
 
   return (
     <>
@@ -38,36 +64,46 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
         action={<div className="flex items-center gap-3"><Score value={app.score} /><StatusBadge status={app.status} /></div>}
       />
 
-      {waiting && (
-        <Card title={app.status === "needs_action" ? "This needs your input" : "Approve this application?"} className="mb-6 border-warn/40">
-          <p className="mb-2 text-sm font-medium">{app.status === "needs_action" ? "Why the worker stopped:" : "Why this wasn't sent automatically:"}</p>
-          <ul className="mb-4 list-disc space-y-1 pl-5 text-sm" data-reasons>{waitingReason(app, profile.thresholds?.auto).details.map((d) => <li key={d}>{d}</li>)}</ul>
-          <p className="mb-4 text-sm text-muted">
-            Check the CV and answers below. Approving queues it for your laptop worker to submit. If you&apos;d rather apply yourself, open the job, apply, then mark it applied.
+      <Card title={ready ? "Ready to apply" : archived ? "Applied" : STATUS_LABELS[app.status]} className={`mb-6 ${ready ? "border-l-4 border-l-stamp" : ""}`}>
+        <ol className="space-y-4 text-sm">
+          <li>
+            <p className="mb-2 font-medium">{ready ? "1. Download your documents" : "Your documents"}</p>
+            <div className="flex flex-wrap gap-2" data-downloads>
+              <a href={dl("cv", "pdf")} className={secondaryButtonClass}>CV (PDF)</a>
+              <a href={dl("cv", "docx")} className={secondaryButtonClass}>CV (Word)</a>
+              {t.coverLetter && <a href={dl("cover", "pdf")} className={secondaryButtonClass}>Cover letter (PDF)</a>}
+              {t.coverLetter && <a href={dl("cover", "docx")} className={secondaryButtonClass}>Cover letter (Word)</a>}
+            </div>
+            {!t.coverLetter && ready && <p className="mt-2 text-xs text-muted">No cover letter: you can work here without sponsorship and the job doesn&apos;t ask for one.</p>}
+          </li>
+          {ready && (
+            <>
+              <li>
+                <p className="mb-2 font-medium">2. Apply on the employer&apos;s site</p>
+                <a href={app.url} target="_blank" rel="noopener noreferrer" className={secondaryButtonClass}>Open the job ↗</a>
+                <span className="ml-3 text-xs text-muted">The answers for the form are further down this page.</span>
+              </li>
+              <li>
+                <p className="mb-2 font-medium">3. Tell the app you&apos;ve applied</p>
+                <div className="flex flex-wrap gap-2">
+                  <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="applied" /><button className={buttonClass}>I&apos;ve applied</button></form>
+                  <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="dismissed" /><input type="hidden" name="note" value="Not for me" /><button className={secondaryButtonClass}>Not for me</button></form>
+                  <form action={blockCompanyAction}><input type="hidden" name="company" value={app.company} /><button className={secondaryButtonClass}>Block {app.company}</button></form>
+                </div>
+                <p className="mt-2 text-xs text-muted">Untouched matches expire after {MATCH_EXPIRY_DAYS} days. Blocking a company means you&apos;re never matched with them again (undo it on the Companies page).</p>
+              </li>
+            </>
+          )}
+        </ol>
+        {archived && (
+          <p className="mt-4 text-sm text-muted">
+            Applied on {fmt(app.applied_at!)}. These documents and this record are deleted on {fmt(new Date(app.applied_at!.getTime() + APPLIED_RETENTION_DAYS * day))}.
           </p>
-          <div className="flex flex-wrap gap-2">
-            <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="queued" /><button className={buttonClass}>{app.status === "needs_action" ? "Send back to the worker" : "Approve and queue"}</button></form>
-            <a href={app.url} target="_blank" rel="noopener noreferrer" className={secondaryButtonClass}>Open the job ↗</a>
-            <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="applied" /><button className={secondaryButtonClass}>I applied myself</button></form>
-            <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="skipped" /><button className={secondaryButtonClass}>Skip this one</button></form>
-          </div>
-        </Card>
-      )}
-
-      {app.status === "queued" && (
-        <Card title="Queued to submit" className="mb-6">
-          <p className="mb-4 text-sm text-muted">
-            {needsReviewMode(app)
-              ? <>The worker can&apos;t submit this form on its own. Run it in review mode on your laptop (<code>npm run worker -- --review</code>): it opens the form, fills what it can, and you press submit. Or open the job and apply yourself.</>
-              : <>Your laptop worker will submit this the next time it runs (<code>npm run worker</code>).</>}
-            {" "}Changed your mind? Cancel it, or send it back for your approval so it waits until you say go.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="skipped" /><input type="hidden" name="note" value="Cancelled before it was submitted" /><button className={secondaryButtonClass}>Cancel this application</button></form>
-            <form action={setStatusAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="needs_approval" /><input type="hidden" name="note" value="Taken out of the queue" /><button className={secondaryButtonClass}>Back to my approval</button></form>
-          </div>
-        </Card>
-      )}
+        )}
+        {(app.status === "dismissed" || app.status === "expired") && (
+          <form action={setStatusAction} className="mt-4"><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="new" /><button className={secondaryButtonClass}>Bring it back</button></form>
+        )}
+      </Card>
 
       {app.flags.length > 0 && (
         <Card title="Notes" className="mb-6">
@@ -77,26 +113,19 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Tailored CV" aside={<span className="flex items-center gap-3 text-xs text-muted">{t.usedLLM ? "Reworded by AI, checked against your CV" : "Your own wording, reordered"}<a href={`/applications/${id}/cv`} target="_blank" rel="noopener" className="font-medium text-accent underline">Open as PDF</a></span>}>
-            <div className="space-y-4 text-sm">
-              {t.summary && <p>{t.summary}</p>}
-              {t.roles.map((r) => (
-                <div key={r.id}>
-                  <p className="font-medium">{r.title}, {r.employer}</p>
-                  {r.team && <p className="text-sm">{r.team}</p>}
-                  <p className="text-xs text-muted">{formatMonth(r.start)} to {formatMonth(r.end)}</p>
-                  <ul className="mt-1 list-disc space-y-1 pl-5">{r.bullets.map((b) => <li key={b.sourceId}>{b.text}</li>)}</ul>
-                </div>
-              ))}
-              {t.skills.length > 0 && <p><span className="font-medium">Skills: </span>{t.skills.join(", ")}</p>}
-            </div>
+          <Card title={t.coverLetter ? "Tailored CV and cover letter" : "Tailored CV"} aside={<span className="text-xs text-muted">{t.edited ? "Edited by you" : t.usedLLM ? "Reworded by AI, checked against your CV" : "Your own wording, reordered"}</span>}>
+            {outdated && <p className="mb-4 rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">Your master CV has changed since you edited this. Regenerate to pick up the changes (this replaces your edits).</p>}
+            {ready ? <DocEditor id={id} tailored={t} /> : (
+              <div className="space-y-3 text-sm">
+                <p className="text-muted">This is the version you applied with; it can&apos;t be changed now.</p>
+                {t.summary && <p>{t.summary}</p>}
+                {t.roles.map((r) => (
+                  <div key={r.id}><p className="font-medium">{r.title}, {r.employer}</p><ul className="mt-1 list-disc space-y-1 pl-5">{r.bullets.map((b, i) => <li key={`${b.sourceId}-${i}`}>{b.text}</li>)}</ul></div>
+                ))}
+                {t.coverLetter && <p className="whitespace-pre-wrap border-t border-line pt-3 leading-relaxed">{t.coverLetter}</p>}
+              </div>
+            )}
           </Card>
-
-          {t.coverLetter && (
-            <Card title="Cover letter" aside={<CopyButton text={t.coverLetter} />}>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{t.coverLetter}</p>
-            </Card>
-          )}
 
           <Card title="Job description">
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">{app.description.slice(0, 6000)}</p>
@@ -105,6 +134,17 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
         </div>
 
         <div className="space-y-6">
+          <Card title="Answers for the form">
+            <dl className="space-y-3 text-sm">
+              {answers.map(([k, v]) => (
+                <div key={k}>
+                  <dt className="flex items-center justify-between gap-2 text-muted">{k}<CopyButton text={v} /></dt>
+                  <dd className="font-medium">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </Card>
+
           <Card title="Why it matched">
             <dl className="space-y-2 text-sm">
               {([["Title", app.breakdown.title, 30], ["Skills", app.breakdown.skills, 45], ["Experience", app.breakdown.experience, 15], ["Domain", app.breakdown.domain, 10]] as const).map(([k, v, max]) => (
@@ -115,17 +155,8 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             {app.breakdown.missingSkills.length > 0 && <p className="mt-1 text-xs text-muted"><span className="font-medium text-ink">Not on your CV:</span> {app.breakdown.missingSkills.join(", ")}</p>}
           </Card>
 
-          <Card title="Answers it will give">
-            <dl className="space-y-3 text-sm">
-              <div><dt className="text-muted">Authorised to work there?</dt><dd className="font-medium">{answerAuthQuestion(AUTH_Q, place, profile.auth)}</dd></div>
-              <div><dt className="text-muted">Need sponsorship?</dt><dd className="font-medium">{answerAuthQuestion(SPONSOR_Q, place, profile.auth)}</dd></div>
-              <div><dt className="text-muted">Self-ID questions</dt><dd className="font-medium">{Object.values(profile.selfId).every((v) => v === "prefer_not") ? "Prefer not to say" : "As set in your details"}</dd></div>
-              {immigrationText(place) && <div><dt className="text-muted">Context box</dt><dd>{immigrationText(place)}</dd></div>}
-            </dl>
-          </Card>
-
-          {moves.length > 0 && !waiting && app.status !== "queued" && (
-            <Card title="Update status">
+          {archived && moves.length > 0 && (
+            <Card title="Update progress">
               <form action={setStatusAction} className="space-y-3">
                 <input type="hidden" name="id" value={id} />
                 <select name="status" className="input" defaultValue={moves[0]} aria-label="New status">
@@ -134,16 +165,22 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
                 <input name="note" className="input" placeholder="Note (optional)" maxLength={500} />
                 <button className={`${buttonClass} w-full`}>Update</button>
               </form>
+              {app.status === "applied" && (
+                <form action={setStatusAction} className="mt-3"><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="new" /><input type="hidden" name="note" value="Marked applied by mistake" /><button className="text-xs text-muted underline hover:text-ink">I haven&apos;t actually applied yet</button></form>
+              )}
             </Card>
           )}
 
           <Card title="History">
             <ol className="space-y-2 text-xs text-muted">
               {history.map((e, i) => {
-                const d = e.detail as { from?: string; to?: string; note?: string } | null;
-                return <li key={i}><span className="block text-ink">{e.created_at.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>{e.kind === "status" ? `${d?.from} → ${d?.to}${d?.note ? `: ${d.note}` : ""}` : e.kind.replace("_", " ")}</li>;
+                const d = e.detail as { from?: string; to?: string; note?: string; doc?: string; format?: string } | null;
+                const label = e.kind === "status"
+                  ? `${STATUS_LABELS[d?.from as keyof typeof STATUS_LABELS] ?? d?.from} → ${STATUS_LABELS[d?.to as keyof typeof STATUS_LABELS] ?? d?.to}${d?.note ? `: ${d.note}` : ""}`
+                  : e.kind === "downloaded" ? `Downloaded ${d?.doc === "cover" ? "cover letter" : "CV"} (${d?.format === "docx" ? "Word" : "PDF"})`
+                  : EVENT_LABELS[e.kind] ?? e.kind.replace(/_/g, " ");
+                return <li key={i}><span className="block text-ink">{e.created_at.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>{label}</li>;
               })}
-              {sent.map((s, i) => <li key={`s${i}`}><span className="block text-ink">{new Date(s.sent_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>submitted to {s.target_url}</li>)}
             </ol>
           </Card>
         </div>

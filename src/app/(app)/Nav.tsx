@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 
 const LINKS = [
   { href: "/", label: "Dashboard" },
-  { href: "/applications", label: "Applications" },
+  { href: "/applications", label: "Matches" },
   { href: "/cv", label: "Master CV" },
   { href: "/profile", label: "Details & answers" },
   { href: "/preferences", label: "Job preferences" },
@@ -26,7 +26,7 @@ export function Nav({ badge }: { badge: number }) {
             className={`flex items-center justify-between whitespace-nowrap rounded-lg border-l-4 px-3 py-2 text-sm transition-colors ${active ? "border-accent bg-surface font-semibold text-ink" : "border-transparent text-muted hover:text-ink"}`}
           >
             {l.label}
-            {l.href === "/applications" && badge > 0 && <span className="ml-2 rounded-full bg-red px-2 text-xs font-bold text-white" title="Waiting for you">{badge}</span>}
+            {l.href === "/applications" && badge > 0 && <span className="ml-2 rounded-full bg-red px-2 text-xs font-bold text-white" title="Ready for you to apply">{badge}</span>}
           </Link>
         );
       })}

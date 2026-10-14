@@ -1,7 +1,5 @@
 // Shared checks for API routes.
 import { timingSafeEqual } from "node:crypto";
-import { getDb } from "./db";
-import { userForWorker } from "./store";
 
 const bearer = (req: Request) => req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ?? null;
 
@@ -13,10 +11,6 @@ export function cronAuthorised(req: Request): boolean {
   const a = Buffer.from(given);
   const b = Buffer.from(secret);
   return a.length === b.length && timingSafeEqual(a, b);
-}
-
-export async function workerUser(req: Request) {
-  return userForWorker(await getDb(), bearer(req));
 }
 
 export const json = (body: unknown, status = 200) => Response.json(body, { status });

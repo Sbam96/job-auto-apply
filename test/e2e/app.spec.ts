@@ -160,102 +160,111 @@ test("PR-06 up to 4 locations, each with work modes and cities", async ({ page }
   await expect(page.locator('[data-location="UK"]').getByLabel("Cities (for hybrid and on-site)")).toHaveValue("Manchester, London");
 });
 
-test("TR-01 an application moves through approval, applied and interview", async ({ page }) => {
+test("TR-01 a match goes from ready, to applied, to interview", async ({ page }) => {
   await login(page);
   const { id } = await (await page.request.post("/api/test/seed", { data: { email } })).json();
   await page.goto("/applications");
   await page.getByRole("link", { name: "Business Analyst" }).first().click();
-  await expect(page.getByRole("heading", { name: "Approve this application?" })).toBeVisible();
-  await expect(page.getByText("Why this wasn't sent automatically:")).toBeVisible(); // TR-05
-  await expect(page.locator("[data-reasons] li").first()).not.toBeEmpty();
+  await expect(page.getByRole("heading", { name: "Ready to apply" })).toBeVisible();
   await expect(page.getByText("Wrote user stories in Jira at Insureco")).toBeVisible();
-  await page.getByRole("button", { name: "I applied myself" }).click();
+  await page.getByRole("button", { name: "I've applied" }).click();
   await expect(page.locator("[data-status]").first()).toHaveAttribute("data-status", "applied");
+  await expect(page.getByText(/These documents and this record are deleted on/)).toBeVisible(); // RT-02
   await page.getByLabel("New status").selectOption("interview");
   await page.getByRole("button", { name: "Update" }).click();
   await expect(page.locator("[data-status]").first()).toHaveAttribute("data-status", "interview");
-  await expect(page.getByText("applied → interview")).toBeVisible();
+  await expect(page.getByText("Applied → Interview")).toBeVisible();
   expect(id).toBeGreaterThan(0);
 });
 
-test("WA-01 a US application shows not-authorised answers and the immigration text", async ({ page }) => {
+test("WA-01 a US match shows not-authorised answers and the immigration text, ready to copy", async ({ page }) => {
   await login(page);
   const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Usco", region: "US" } })).json();
   await page.goto(`/applications/${id}`);
-  const answers = page.locator("section", { has: page.getByRole("heading", { name: "Answers it will give" }) });
+  const answers = page.locator("section", { has: page.getByRole("heading", { name: "Answers for the form" }) });
   await expect(answers.getByText("No", { exact: true })).toBeVisible();
   await expect(answers.getByText("Yes", { exact: true })).toBeVisible();
   await expect(answers).toContainText("eligible to apply for permanent residence");
 });
 
-test("DP-03 the worker's submission is logged and the application marked applied", async ({ page }) => {
+test("DOC-01 DOC-02 the CV downloads as a PDF and as a Word file", async ({ page }) => {
+  await login(page);
+  const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Fileco" } })).json();
+  await page.goto(`/applications/${id}`);
+  for (const [name, start, ext] of [["CV (PDF)", "%PDF-", "pdf"], ["CV (Word)", "PK", "docx"]] as const) {
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name }).click()]);
+    expect(download.suggestedFilename()).toBe(`Alex-Example-CV-Fileco.${ext}`);
+    const bytes = Buffer.concat(await (await download.createReadStream()).toArray());
+    expect(bytes.subarray(0, start.length).toString()).toBe(start);
+  }
+  await expect(page.getByRole("link", { name: "Cover letter (PDF)" })).toHaveCount(0);
+  expect((await page.request.get(`/applications/${id}/download?doc=cover&format=pdf`)).status()).toBe(404);
+});
+
+test("DOC-03 the cover letter downloads when the match has one", async ({ page }) => {
+  await login(page);
+  const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Letterco", region: "US", coverLetter: "I would bring strong requirements skills to Letterco." } })).json();
+  await page.goto(`/applications/${id}`);
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Cover letter (Word)" }).click()]);
+  expect(download.suggestedFilename()).toBe("Alex-Example-Cover-Letter-Letterco.docx");
+  await expect(page.getByRole("link", { name: "Cover letter (PDF)" })).toBeVisible();
+});
+
+test("DOC-04 you can edit the text before downloading, and regenerate it", async ({ page }) => {
+  await login(page);
+  const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Editco" } })).json();
+  await page.goto(`/applications/${id}`);
+  await page.getByRole("button", { name: "Edit the text" }).click();
+  await page.getByLabel("Summary").fill("Business Analyst who keeps it honest.");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Business Analyst who keeps it honest.")).toBeVisible();
+  await expect(page.getByText("Edited by you")).toBeVisible();
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Regenerate" }).click();
+  await expect(page.getByRole("status")).toContainText("Regenerated");
+  await expect(page.getByText("Business Analyst who keeps it honest.")).toHaveCount(0);
+});
+
+test("BL-01 blocking a company dismisses its match and lists it on the Companies page", async ({ page }) => {
+  await login(page);
+  const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Blockco" } })).json();
+  await page.goto(`/applications/${id}`);
+  await page.getByRole("button", { name: "Block Blockco" }).click();
+  await expect(page.locator("[data-status]").first()).toHaveAttribute("data-status", "dismissed");
+  await page.goto("/companies");
+  await expect(page.locator("[data-blocked]")).toContainText("Blockco");
+  await page.getByRole("button", { name: "Unblock Blockco" }).click();
+  await expect(page.locator("[data-blocked]")).toHaveCount(0);
+});
+
+test("NT-01 you choose how often the match email comes and when", async ({ page }) => {
   await login(page);
   await page.goto("/settings");
-  await page.getByRole("button", { name: "Generate worker key" }).click();
-  const token = (await page.locator("[data-worker-token]").textContent())!.trim();
-  const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Workerco", status: "queued" } })).json();
-  const auth = { Authorization: `Bearer ${token}` };
-  const next = await (await page.request.get("/api/worker/next?mode=auto", { headers: auth })).json();
-  expect(next.application.id).toBe(id);
-  expect(next.cvHtml).toContain("Alex Example");
-  const res = await page.request.post("/api/worker/result", { headers: auth, data: { id, outcome: "applied", targetUrl: "https://job-boards.greenhouse.io/acme/jobs/1", payload: { "First Name": "Alex" } } });
-  expect(res.ok()).toBe(true);
-  await page.goto(`/applications/${id}`);
-  await expect(page.locator("[data-status]").first()).toHaveAttribute("data-status", "applied");
-  await expect(page.getByText("submitted to https://job-boards.greenhouse.io/acme/jobs/1")).toBeVisible();
-  expect((await page.request.get("/api/worker/next?mode=auto", { headers: { Authorization: "Bearer wrong" } })).status()).toBe(401);
+  await page.getByLabel("How often").selectOption("2");
+  await page.getByLabel("At (UK time)").selectOption("19");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await page.reload();
+  await expect(page.getByLabel("How often")).toHaveValue("2");
+  await expect(page.getByLabel("At (UK time)")).toHaveValue("19");
 });
 
-test("TR-04 a queued application can be cancelled, and the worker then won't pick it up", async ({ page }) => {
-  await login(page);
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Generate worker key" }).click();
-  const token = (await page.locator("[data-worker-token]").textContent())!.trim();
-  const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Cancelco", status: "queued" } })).json();
-  await page.goto(`/applications/${id}`);
-  await expect(page.getByRole("heading", { name: "Queued to submit" })).toBeVisible();
-  await page.getByRole("button", { name: "Cancel this application" }).click();
-  await expect(page.locator("[data-status]").first()).toHaveAttribute("data-status", "skipped");
-  await expect(page.getByText("Cancelled before it was submitted")).toBeVisible();
-  const next = await (await page.request.get("/api/worker/next?mode=auto", { headers: { Authorization: `Bearer ${token}` } })).json();
-  expect(next.application?.id).not.toBe(id);
-});
-
-test("AP-05 the tailored CV opens as a printable page to save as PDF", async ({ page }) => {
-  await login(page);
-  const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Printco" } })).json();
-  await page.goto(`/applications/${id}`);
-  const [cv] = await Promise.all([page.waitForEvent("popup"), page.getByRole("link", { name: "Open as PDF" }).click()]);
-  await expect(cv.getByRole("button", { name: "Save as PDF / print" })).toBeVisible();
-  await expect(cv.getByText("Wrote user stories in Jira at Insureco")).toBeVisible();
-  expect((await page.request.get(`/applications/999999/cv`)).status()).toBe(404);
-});
-
-test("TR-03 the worker flagging a form emails the user", async ({ page }) => {
-  await login(page);
-  await page.goto("/settings");
-  await page.getByRole("button", { name: "Generate worker key" }).click();
-  const token = (await page.locator("[data-worker-token]").textContent())!.trim();
-  const { id } = await (await page.request.post("/api/test/seed", { data: { email, company: "Essayco", status: "queued" } })).json();
-  await page.request.post("/api/worker/result", { headers: { Authorization: `Bearer ${token}` }, data: { id, outcome: "needs_action", unresolved: [{ label: "Why Essayco?", reason: "essay question" }] } });
-  const { mail } = await (await page.request.get(`/api/test/outbox?to=${encodeURIComponent(email)}`)).json();
-  expect(mail[0].subject).toBe("Action needed: Business Analyst at Essayco");
-  await page.goto(`/applications/${id}`);
-  await expect(page.locator("[data-reasons]")).toContainText("Why Essayco?: essay question"); // TR-05
-  await page.goto(`/applications/${id}`);
-  await expect(page.getByRole("heading", { name: "This needs your input" })).toBeVisible();
-  await expect(page.getByText("Why Essayco?")).toBeVisible();
-});
-
-test("TR-02 the midnight report needs the cron secret and sends once a day", async ({ page }) => {
+test("NT-02 the hourly run needs the cron secret, and emails matches with documents ready", async ({ page }) => {
   expect((await page.request.post("/api/cron/report?force=1")).status()).toBe(401);
   const auth = { Authorization: "Bearer e2e-cron-secret-1234567890" };
-  const first = await (await page.request.post("/api/cron/report?force=1", { headers: auth })).json();
-  const second = await (await page.request.post("/api/cron/report?force=1", { headers: auth })).json();
-  expect(first.sent).toBeGreaterThanOrEqual(1);
-  expect(second.sent).toBe(0);
+  const run = await (await page.request.post("/api/cron/report?force=1", { headers: auth })).json();
+  expect(run.sent).toBeGreaterThanOrEqual(1);
   const { mail } = await (await page.request.get(`/api/test/outbox?to=${encodeURIComponent(email)}`)).json();
-  expect(mail[0].body).toContain("Your job applications for");
+  expect(mail[0].subject).toMatch(/new match|still ready/);
+  expect(mail[0].body).toContain("CV ready");
+});
+
+test("UI-01 the app name takes you back to the dashboard", async ({ page }) => {
+  await login(page);
+  await page.goto("/settings");
+  await page.getByRole("link", { name: /go to the dashboard/ }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "Ready to apply" })).toBeVisible();
 });
 
 test("DP-01 the user can download all their data", async ({ page }) => {

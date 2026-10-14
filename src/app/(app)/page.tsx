@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { needsReviewMode, waitingReason, workerLine } from "@/lib/reasons";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { dashboardCounts, getProfile, lastSearch, listApplications, workerSeenAt } from "@/lib/store";
+import { dashboardCounts, getProfile, lastSearch, listApplications } from "@/lib/store";
 import { Card, Empty, Score, StatusBadge, TextLink } from "@/components/ui";
 import { LastSearch } from "./LastSearch";
 import { RouteMap } from "./RouteMap";
@@ -19,16 +18,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const [profile, counts, waiting, recent, run, { welcome }] = await Promise.all([
     getProfile(db, user.id),
     dashboardCounts(db, user.id),
-    listApplications(db, user.id, ["needs_action", "needs_approval"]),
+    listApplications(db, user.id, ["new"]),
     listApplications(db, user.id),
     lastSearch(db, user.id),
     searchParams,
   ]);
-  const seenAt = await workerSeenAt(db, user.id);
-  const reviewOnly = recent.filter(needsReviewMode).length;
   const firstName = profile.fullName.trim().split(/\s+/)[0];
   const waitingCount = waiting.length;
-  const queued = counts.queued ?? 0;
 
   // What the search needs before it can work well.
   const steps = [
@@ -44,10 +40,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     : profile.paused
       ? "Searching is paused. Turn it back on in Job preferences."
       : waitingCount > 0
-        ? `${waitingCount} ${waitingCount === 1 ? "application needs" : "applications need"} you before ${waitingCount === 1 ? "it goes" : "they go"} out.`
-        : queued > 0
-          ? `Nothing needs you. ${queued} ${queued === 1 ? "is" : "are"} queued for your laptop worker.${reviewOnly ? ` ${reviewOnly === queued ? (queued === 1 ? "It's" : "All of them are") : `${reviewOnly} of them are`} on forms it can't submit alone, so run it in review mode.` : ""} ${workerLine(seenAt, new Date())}`
-          : "Nothing needs you right now. The next search runs automatically.";
+        ? `${waitingCount} ${waitingCount === 1 ? "match has its documents" : "matches have their documents"} ready. Download, apply on the employer’s site, then mark it applied.`
+        : "Nothing waiting right now. The next search runs automatically.";
 
   return (
     <>
@@ -78,20 +72,20 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       <div className="grid gap-8 lg:grid-cols-5">
         <section className="lg:col-span-3" aria-labelledby="waiting-h">
           <div className="mb-3 flex items-baseline justify-between">
-            <h2 id="waiting-h" className="text-xl font-semibold">Waiting for you</h2>
-            {waitingCount > 0 && <TextLink href="/applications?view=waiting">See all</TextLink>}
+            <h2 id="waiting-h" className="text-xl font-semibold">Ready to apply</h2>
+            {waitingCount > 0 && <TextLink href="/applications?view=ready">See all</TextLink>}
           </div>
           {waitingCount === 0 ? (
-            <Empty title="All clear">Matches that need your approval or an answer show up here.</Empty>
+            <Empty title="All caught up">New matches show up here with their CV, and cover letter when it&apos;s needed.</Empty>
           ) : (
             <ul className="space-y-3">
               {waiting.slice(0, 6).map((a) => (
                 <li key={a.id}>
-                  <Link href={`/applications/${a.id}`} className={`flex items-center justify-between gap-4 rounded-xl border bg-surface px-4 py-3.5 transition-colors hover:border-accent ${a.status === "needs_action" ? "border-l-4 border-line border-l-red" : "border-line"}`}>
+                  <Link href={`/applications/${a.id}`} className="flex items-center justify-between gap-4 rounded-xl border border-line bg-surface px-4 py-3.5 transition-colors hover:border-accent">
                     <div className="min-w-0">
                       <p className="truncate font-semibold">{a.title}</p>
                       <p className="truncate text-sm text-muted">{a.company}, {a.region} {a.mode}</p>
-                      <p className="mt-1 text-sm">{waitingReason(a, profile.thresholds?.auto).short}</p>
+                      <p className="mt-1 text-sm">{a.tailored?.coverLetter ? "CV and cover letter ready" : "CV ready"}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-3"><Score value={a.score} /><StatusBadge status={a.status} /></div>
                   </Link>
@@ -104,7 +98,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <section className="lg:col-span-2" aria-labelledby="recent-h">
           <h2 id="recent-h" className="mb-3 text-xl font-semibold">Latest</h2>
           {recent.length === 0 ? (
-            <Empty title="No applications yet">{setupDone ? "Press Search now to find your first matches." : "Finish setting up, then press Search now."}</Empty>
+            <Empty title="No matches yet">{setupDone ? "Press Search now to find your first matches." : "Finish setting up, then press Search now."}</Empty>
           ) : (
             <ol className="relative space-y-4 border-l-2 border-line pl-5">
               {recent.slice(0, 7).map((a) => (

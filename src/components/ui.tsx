@@ -39,16 +39,14 @@ export function Field({ label, hint, children, htmlFor }: { label: string; hint?
 }
 
 const STATUS_TONE: Record<Status, string> = {
-  skipped: "border-line text-muted",
-  needs_approval: "border-stamp bg-warn-soft text-warn",
-  needs_action: "border-red/50 bg-bad-soft text-bad",
-  queued: "border-accent/40 bg-accent-soft text-accent",
+  new: "border-stamp bg-warn-soft text-warn",
   applied: "border-accent bg-accent text-accent-ink",
   response: "border-good/40 bg-good-soft text-good",
   interview: "border-good bg-good-soft text-good",
   offer: "border-good bg-good text-white",
   rejected: "border-line text-muted line-through decoration-1",
-  withdrawn: "border-line text-muted",
+  dismissed: "border-line text-muted",
+  expired: "border-line text-muted",
 };
 
 export function StatusBadge({ status }: { status: Status }) {

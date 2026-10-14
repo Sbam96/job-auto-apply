@@ -1,20 +1,27 @@
 "use client";
 import { useActionState } from "react";
-import { deleteAccountAction, workerTokenAction, type FormState } from "@/app/actions";
+import { deleteAccountAction, saveNotificationsAction, type FormState } from "@/app/actions";
 import { FormMessage, SubmitButton } from "@/components/forms";
 import { dangerButtonClass, secondaryButtonClass } from "@/components/ui";
 
-export function WorkerToken() {
-  const [state, action] = useActionState<FormState, FormData>(() => workerTokenAction(), null);
+export function Notifications({ every, hour }: { every: 1 | 2; hour: number }) {
+  const [state, action] = useActionState<FormState, FormData>(saveNotificationsAction, null);
+  const label = (h: number) => new Date(Date.UTC(2026, 0, 1, h)).toLocaleTimeString("en-GB", { hour: "numeric", hour12: true, timeZone: "UTC" });
   return (
-    <form action={action} className="space-y-3">
-      <SubmitButton className={secondaryButtonClass} pending="Generating…">Generate worker key</SubmitButton>
-      {state?.ok && (
-        <div className="rounded-lg bg-canvas p-3">
-          <p className="mb-1 text-xs text-muted">Copy it now; it won&apos;t be shown again. Put it in the worker&apos;s .env as WORKER_TOKEN.</p>
-          <code className="break-all text-sm" data-worker-token>{state.message}</code>
-        </div>
-      )}
+    <form action={action} className="flex flex-wrap items-end gap-3">
+      <label className="text-sm">How often
+        <select name="every" defaultValue={String(every)} className="input mt-1 w-44">
+          <option value="1">Every day</option>
+          <option value="2">Every two days</option>
+        </select>
+      </label>
+      <label className="text-sm">At (UK time)
+        <select name="hour" defaultValue={String(hour)} className="input mt-1 w-32">
+          {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{label(h)}</option>)}
+        </select>
+      </label>
+      <SubmitButton className={secondaryButtonClass}>Save</SubmitButton>
+      <FormMessage state={state} />
     </form>
   );
 }

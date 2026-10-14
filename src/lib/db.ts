@@ -7,11 +7,9 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   verified_at TIMESTAMPTZ,
-  worker_token_hash TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS worker_seen_at TIMESTAMPTZ;
 CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub ON users (google_sub) WHERE google_sub IS NOT NULL;
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
@@ -68,17 +66,14 @@ CREATE TABLE IF NOT EXISTS applications (
   countries TEXT[] NOT NULL DEFAULT '{}',
   score INTEGER NOT NULL,
   breakdown JSONB NOT NULL,
-  route TEXT NOT NULL,
   status TEXT NOT NULL,
   flags JSONB NOT NULL DEFAULT '[]',
   tailored JSONB NOT NULL,
-  unresolved JSONB NOT NULL DEFAULT '[]',
   note TEXT,
   created_day DATE NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  applied_at TIMESTAMPTZ,
-  UNIQUE (user_id, dedupe_key)
+  applied_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS applications_user_status ON applications (user_id, status);
 CREATE TABLE IF NOT EXISTS events (
@@ -89,29 +84,20 @@ CREATE TABLE IF NOT EXISTS events (
   detail JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE TABLE IF NOT EXISTS submissions (
-  id SERIAL PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-  target_url TEXT NOT NULL,
-  payload JSONB NOT NULL,
-  sent_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
 CREATE TABLE IF NOT EXISTS source_fetches (
   key TEXT NOT NULL,
   day DATE NOT NULL,
   count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (key, day)
 );
-CREATE TABLE IF NOT EXISTS report_runs (
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  day DATE NOT NULL,
-  PRIMARY KEY (user_id, day)
-);
 CREATE TABLE IF NOT EXISTS search_runs (
   user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   summary JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS digest_runs (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  sent_at TIMESTAMPTZ NOT NULL
 );
 CREATE TABLE IF NOT EXISTS mail_outbox (
   id SERIAL PRIMARY KEY,
@@ -120,6 +106,21 @@ CREATE TABLE IF NOT EXISTS mail_outbox (
   body TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+`;
+
+// Moving from auto-applying to "documents ready for you" (October 2026). Each step is safe to run again.
+const MIGRATIONS = `
+UPDATE applications SET status = 'new' WHERE status IN ('needs_approval', 'needs_action', 'queued');
+UPDATE applications SET status = 'dismissed' WHERE status IN ('skipped', 'withdrawn');
+ALTER TABLE applications DROP CONSTRAINT IF EXISTS applications_user_id_dedupe_key_key;
+CREATE UNIQUE INDEX IF NOT EXISTS applications_one_open_match ON applications (user_id, dedupe_key) WHERE status = 'new';
+CREATE INDEX IF NOT EXISTS applications_user_key ON applications (user_id, dedupe_key);
+ALTER TABLE applications DROP COLUMN IF EXISTS route;
+ALTER TABLE applications DROP COLUMN IF EXISTS unresolved;
+DROP TABLE IF EXISTS submissions;
+DROP TABLE IF EXISTS report_runs;
+ALTER TABLE users DROP COLUMN IF EXISTS worker_token_hash;
+ALTER TABLE users DROP COLUMN IF EXISTS worker_seen_at;
 `;
 
 export interface Db {
@@ -146,6 +147,7 @@ export async function openDb(rawUrl: string): Promise<Db> {
   });
   pool.on("error", (err) => console.error("[db] idle client error", err.message));
   await pool.query(SCHEMA);
+  await pool.query(MIGRATIONS);
   return {
     query: (text, params) => pool.query(text, params as unknown[]),
     async tx(fn) {

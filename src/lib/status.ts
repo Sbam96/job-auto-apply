@@ -2,16 +2,14 @@
 import type { Status } from "./config";
 
 const NEXT: Record<Status, Status[]> = {
-  needs_approval: ["queued", "applied", "skipped", "withdrawn"],
-  needs_action: ["queued", "applied", "skipped", "withdrawn"],
-  queued: ["applied", "needs_action", "needs_approval", "skipped", "withdrawn"],
-  applied: ["response", "interview", "offer", "rejected", "withdrawn"],
-  response: ["interview", "offer", "rejected", "withdrawn"],
-  interview: ["interview", "offer", "rejected", "withdrawn"],
-  offer: ["withdrawn"],
+  new: ["applied", "dismissed"],
+  applied: ["response", "interview", "offer", "rejected", "new"], // "new" undoes a mistaken "I've applied"
+  response: ["interview", "offer", "rejected"],
+  interview: ["interview", "offer", "rejected"],
+  offer: ["rejected"],
   rejected: [],
-  withdrawn: [],
-  skipped: ["needs_approval"],
+  dismissed: ["new"],
+  expired: ["new"],
 };
 
 export const canMove = (from: Status, to: Status) => NEXT[from]?.includes(to) ?? false;

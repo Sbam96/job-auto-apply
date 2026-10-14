@@ -34,8 +34,10 @@ export function emptyProfile(): Profile {
     education: [],
     certifications: [],
     skills: [],
-    thresholds: { apply: 75, auto: 85 },
+    thresholds: { apply: 75 },
     paused: false,
+    blockedCompanies: [],
+    digest: { every: 1, hour: 8 },
   };
 }
 
@@ -50,7 +52,9 @@ export function withDefaults(p: Partial<Profile> | null | undefined): Profile {
     expectedSalary: { ...base.expectedSalary, ...(p.expectedSalary ?? {}) },
     auth: { ...base.auth, ...(p.auth ?? {}) },
     selfId: { ...base.selfId, ...(p.selfId ?? {}) },
-    thresholds: { ...base.thresholds, ...(p.thresholds ?? {}) },
+    thresholds: { apply: p.thresholds?.apply ?? base.thresholds.apply },
+    blockedCompanies: Array.isArray(p.blockedCompanies) ? p.blockedCompanies : [],
+    digest: { ...base.digest, ...(p.digest ?? {}) },
   };
 }
 

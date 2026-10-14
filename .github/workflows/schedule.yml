@@ -7,12 +7,11 @@ name: Scheduled search and report
 on:
   schedule:
     - cron: "15 6,10,14,18 * * *" # searches four times a day (UTC); Remotive allows 4 fetches a day
-    - cron: "5 23 * * *" # midnight report: 00:05 UK in summer (BST)
-    - cron: "5 0 * * *" # midnight report: 00:05 UK in winter (GMT); the app only sends once
+    - cron: "5 * * * *" # every hour: tidy-up, and digest emails for anyone whose chosen hour it is
   workflow_dispatch:
     inputs:
       task:
-        description: "search or report"
+        description: "search or report (report = tidy-up and any digests due)"
         default: "search"
 
 jobs:
@@ -40,5 +39,5 @@ jobs:
         run: |
           TASK="search"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then TASK="${{ github.event.inputs.task }}"; fi
-          if [ "${{ github.event.schedule }}" = "5 23 * * *" ] || [ "${{ github.event.schedule }}" = "5 0 * * *" ]; then TASK="report"; fi
+          if [ "${{ github.event.schedule }}" = "5 * * * *" ]; then TASK="report"; fi
           curl -fsS --max-time 600 -X POST -H "Authorization: Bearer $KEY" "$APP/api/cron/${TASK}"

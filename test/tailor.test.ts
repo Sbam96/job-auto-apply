@@ -127,12 +127,12 @@ describe("PR-02 one box of bullets", () => {
     expect(after[2].id).not.toBe(before[0].id);
   });
   test("PR-07 the project or department shows on the tailored CV under the employer", async () => {
-    const { cvHtml } = await import("@/lib/render");
+    const { cvBlocks } = await import("@/lib/documents");
     const p = profile();
     p.experience[0].team = "Claims Operations";
     const t = baselineTailor(p, job());
     expect(t.roles.find((r) => r.id === "r1")!.team).toBe("Claims Operations");
-    expect(cvHtml(p, t)).toContain("<p>Claims Operations</p>");
+    expect(cvBlocks(p, t)).toContainEqual({ kind: "meta", text: "Claims Operations" });
   });
 });
 

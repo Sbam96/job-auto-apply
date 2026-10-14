@@ -9,7 +9,8 @@ import { validEmail } from "@/lib/auth";
 import { llmFromEnv } from "@/lib/llm";
 import { appUrl, sendMail } from "@/lib/mailer";
 import { REJECT_LABELS } from "@/lib/labels";
-import { londonDay, runSearch, type RunResult } from "@/lib/pipeline";
+import { companyKey, londonDay, runSearch, type RunResult } from "@/lib/pipeline";
+import { tailorFor } from "@/lib/refresh";
 import { requireUser, SESSION_COOKIE, setSessionCookie, currentUser } from "@/lib/session";
 import * as store from "@/lib/store";
 import type { Profile, Role, Skill, UserLocation } from "@/lib/types";
@@ -131,12 +132,11 @@ export async function savePreferencesAction(_: FormState, f: FormData): Promise<
     } catch { return "Locations couldn't be read; try again."; }
     if (!locations.length) return "Add at least one location with a work mode ticked.";
     const apply = Math.min(100, Math.max(50, Number(f.get("applyThreshold")) || 75));
-    const auto = Math.min(100, Math.max(apply, Number(f.get("autoThreshold")) || 85));
     return {
       ...p,
       targetTitles, seniority, seniorityMax, maxYearsAsked, employmentTypes, locations,
       salaryFloor: { usd: money(f, "floorUsd"), gbp: money(f, "floorGbp") },
-      thresholds: { apply, auto },
+      thresholds: { apply },
       auth: { usSponsorship: str(f, "usSponsorship") !== "no", canadaSponsorship: true },
       paused: f.get("paused") === "on",
     };
@@ -219,9 +219,7 @@ export async function setStatusAction(f: FormData) {
   if (!STATUSES.includes(to)) return;
   const id = Number(f.get("id"));
   await store.setStatus(await getDb(), user.id, id, to, str(f, "note", 500) || null);
-  revalidatePath("/applications");
-  revalidatePath(`/applications/${id}`);
-  revalidatePath("/");
+  revalidatePath("/", "layout");
 }
 
 // Searches now, for this user only.
@@ -250,10 +248,82 @@ export async function searchNowAction(): Promise<FormState> {
 
 // ---------- settings ----------
 
-export async function workerTokenAction(): Promise<FormState> {
+// NT-01: how often the digest email comes, and at what time (UK).
+export async function saveNotificationsAction(_: FormState, f: FormData): Promise<FormState> {
+  const every = Number(f.get("every")) === 2 ? 2 : 1;
+  const hour = Math.round(Number(f.get("hour")));
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return fail("Pick a time for the email.");
+  return updateProfile((p) => ({ ...p, digest: { every, hour } }), "/settings");
+}
+
+// ---------- matches: documents (DOC-03, DOC-04) ----------
+
+// Your own edits to the tailored CV and cover letter. Titles, employers and dates stay as they are.
+export async function saveDocumentsAction(_: FormState, f: FormData): Promise<FormState> {
   const user = await requireUser();
-  const token = await store.newWorkerToken(await getDb(), user.id);
-  return { ok: true, message: token };
+  const db = await getDb();
+  const id = Number(f.get("id"));
+  const app = await store.getApplication(db, user.id, id);
+  if (!app) return fail("That match no longer exists.");
+  const t = app.tailored;
+  const roles = t.roles.map((r) => {
+    const raw = f.get(`role:${r.id}`);
+    if (raw == null) return r;
+    return { ...r, bullets: lines(String(raw).slice(0, 8000)).map((text, i) => ({ sourceId: r.bullets[i]?.sourceId ?? `edit-${r.id}-${i}`, text: text.replace(/^[-•*]\s*/, "") })) };
+  });
+  const skills = str(f, "skills", 2000).split(",").map((x) => x.trim()).filter(Boolean);
+  const cover = f.get("coverLetter");
+  await store.saveTailored(db, user.id, id, {
+    ...t,
+    summary: str(f, "summary", 3000),
+    roles,
+    skills,
+    coverLetter: cover == null ? t.coverLetter : String(cover).trim().slice(0, 8000) || null,
+    edited: true,
+  });
+  await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'edited', NULL)", [user.id, id]);
+  revalidatePath(`/applications/${id}`);
+  return { ok: true, message: "Saved. Your downloads now use this text." };
+}
+
+// Throws away edits and tailors again from the latest master CV.
+export async function regenerateAction(_: FormState, f: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const db = await getDb();
+  const id = Number(f.get("id"));
+  const app = await store.getApplication(db, user.id, id);
+  if (!app) return fail("That match no longer exists.");
+  const llm = llmFromEnv();
+  const tailored = await tailorFor(app, await store.getProfile(db, user.id), llm);
+  await store.saveTailored(db, user.id, id, tailored);
+  await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'regenerated', NULL)", [user.id, id]);
+  revalidatePath(`/applications/${id}`);
+  return { ok: true, message: llm ? "Regenerated from your latest master CV." : "Regenerated using your own wording (the AI key isn't set)." };
+}
+
+// ---------- blocked companies (BL-01) ----------
+
+export async function blockCompanyAction(f: FormData) {
+  const user = await requireUser();
+  const db = await getDb();
+  const company = str(f, "company", 200);
+  if (!company) return;
+  const p = await store.getProfile(db, user.id);
+  if (!p.blockedCompanies.some((c) => companyKey(c) === companyKey(company))) await store.saveProfile(db, user.id, { ...p, blockedCompanies: [...p.blockedCompanies, company].slice(0, 200) });
+  // Any open matches with them go to "Not for me".
+  for (const a of await store.listApplications(db, user.id, ["new"])) {
+    if (companyKey(a.company) === companyKey(company)) await store.setStatus(db, user.id, a.id, "dismissed", "Company blocked");
+  }
+  revalidatePath("/", "layout");
+}
+
+export async function unblockCompanyAction(f: FormData) {
+  const user = await requireUser();
+  const db = await getDb();
+  const company = str(f, "company", 200);
+  const p = await store.getProfile(db, user.id);
+  await store.saveProfile(db, user.id, { ...p, blockedCompanies: p.blockedCompanies.filter((c) => companyKey(c) !== companyKey(company)) });
+  revalidatePath("/companies");
 }
 
 export async function deleteAccountAction(_: FormState, f: FormData): Promise<FormState> {

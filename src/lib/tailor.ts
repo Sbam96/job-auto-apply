@@ -26,6 +26,7 @@ export interface Tailored {
   warnings: string[];
   usedLLM: boolean;
   cvVersion?: string; // TL-06: fingerprint of the master CV this was tailored from
+  edited?: boolean; // DOC-04: the user changed the text; never overwritten without asking
 }
 
 interface LlmReply {

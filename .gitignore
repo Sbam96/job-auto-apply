@@ -42,12 +42,7 @@ next-env.d.ts
 
 # keep the env templates
 !.env.example
-!worker/.env.example
 
-# worker browser profile and generated files (personal data)
-worker/.profile/
-worker/.files/
-worker/.env
 
 # test output
 /test-results/

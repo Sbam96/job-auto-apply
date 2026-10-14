@@ -1,30 +1,42 @@
-// TL-06: an application waiting to be submitted always goes out with the latest master CV.
-// If the CV has changed since the application was tailored, it is tailored again (same rules,
-// same validator) and saved before the worker or the review page uses it.
+// TL-06: a match you haven't applied to yet always offers documents from your latest master CV.
+// If the CV has changed since the match was tailored, it is tailored again (same rules, same
+// validator) and saved when you open it. Text you've edited yourself is never replaced without asking.
 import { cvFingerprint } from "./cv";
 import type { Db } from "./db";
 import type { LLM } from "./llm";
 import { saveTailored, type ApplicationRow } from "./store";
+import { asksForCoverLetter } from "./pipeline";
 import { tailor, type Tailored } from "./tailor";
 import type { Job, Profile } from "./types";
 import { immigrationText, wantsCoverLetter, type JobPlace } from "./workauth";
 
-// Only applications that haven't gone out yet are refreshed.
-export const REFRESHABLE = new Set(["needs_approval", "needs_action", "queued"]);
+// Only matches you haven't applied to yet are refreshed; once applied, the documents are what you sent.
+export const REFRESHABLE = new Set(["new"]);
+
+const changed = (app: Pick<ApplicationRow, "tailored">, profile: Profile) => app.tailored?.cvVersion !== cvFingerprint(profile);
 
 export function isStale(app: Pick<ApplicationRow, "status" | "tailored">, profile: Profile) {
-  return REFRESHABLE.has(app.status) && app.tailored?.cvVersion !== cvFingerprint(profile);
+  return REFRESHABLE.has(app.status) && !app.tailored?.edited && changed(app, profile);
 }
 
-export async function freshTailored(db: Db, userId: string, app: ApplicationRow, profile: Profile, llm: LLM | null): Promise<Tailored> {
-  if (!isStale(app, profile)) return app.tailored;
+// DOC-04: you edited the text, and your master CV has changed since: offer to regenerate.
+export function editedButOutdated(app: Pick<ApplicationRow, "status" | "tailored">, profile: Profile) {
+  return REFRESHABLE.has(app.status) && !!app.tailored?.edited && changed(app, profile);
+}
+
+export function tailorFor(app: ApplicationRow, profile: Profile, llm: LLM | null) {
   const job: Job = {
     source: "greenhouse", sourceId: String(app.job_id), company: app.company, title: app.title, location: app.location,
     remote: app.mode === "remote", url: app.url, description: app.description ?? "", employmentType: null,
     salary: app.salary ?? null, postedAt: null, ats: (app.ats as Job["ats"]) ?? null, attribution: app.attribution ?? null,
   };
   const place = { region: app.region, mode: app.mode, countries: app.countries } as JobPlace;
-  const tailored = await tailor(profile, job, llm, { coverLetter: wantsCoverLetter(place), immigrationText: immigrationText(place) });
+  return tailor(profile, job, llm, { coverLetter: wantsCoverLetter(place, { required: asksForCoverLetter(job.description) }), immigrationText: immigrationText(place) });
+}
+
+export async function freshTailored(db: Db, userId: string, app: ApplicationRow, profile: Profile, llm: LLM | null): Promise<Tailored> {
+  if (!isStale(app, profile)) return app.tailored;
+  const tailored = await tailorFor(app, profile, llm);
   await saveTailored(db, userId, app.id, tailored);
   await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'cv_updated', $3)", [userId, app.id, JSON.stringify({ cvVersion: tailored.cvVersion })]);
   return tailored;

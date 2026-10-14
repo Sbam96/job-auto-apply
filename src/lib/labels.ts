@@ -8,5 +8,6 @@ export const REJECT_LABELS: Record<string, string> = {
   pay: "paid below your floor",
   score: "scored under your threshold",
   duplicate: "were already matched",
+  blocked: "were at companies you blocked",
   "daily limit": "waited because today's limit was reached",
 };

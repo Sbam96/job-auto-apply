@@ -1,11 +1,11 @@
-// One search run: fetch sources, match each user, create applications with tailored documents.
+// One search run: fetch sources, match each user, and prepare a tailored CV (and cover letter when
+// needed) for each match, ready for the user to download and apply with.
 // Every dependency is passed in (store, network, LLM, clock), so a whole run can be tested offline.
 
-import { DAILY_APPLY_CAP, SOURCE_LIMITS, type Region, type Status, type WorkMode } from "./config";
+import { DAILY_MATCH_CAP, REMATCH_AFTER_DAYS, SOURCE_LIMITS, type Region, type WorkMode } from "./config";
 import { checkInjection } from "./injection";
 import type { LLM } from "./llm";
 import { evaluate, type ScoreBreakdown } from "./match";
-import { atsFromUrl, routeFor, type Route } from "./route";
 import { fetchAll, type Board } from "./sources";
 import { tailor, type Tailored } from "./tailor";
 import type { Job, Profile } from "./types";
@@ -20,8 +20,6 @@ export interface NewApplication {
   countries: string[];
   score: number;
   breakdown: ScoreBreakdown;
-  route: Route;
-  status: Status;
   flags: string[];
   tailored: Tailored;
 }
@@ -32,7 +30,8 @@ export interface PipelineStore {
   fetchCount(key: string, day: string): Promise<number>;
   recordFetch(key: string, day: string): Promise<void>;
   saveJobs(jobs: Job[]): Promise<Map<string, number>>; // "source:sourceId" -> job id
-  hasApplication(userId: string, dedupeKey: string): Promise<boolean>;
+  // MT-07: an open match for this role, or one applied to after `appliedSince`.
+  hasApplication(userId: string, dedupeKey: string, appliedSince: Date): Promise<boolean>;
   createdOn(userId: string, day: string): Promise<number>;
   createApplication(app: NewApplication): Promise<number>;
   recordRun?(userId: string, summary: UserRunSummary): Promise<void>;
@@ -45,9 +44,15 @@ export interface RunResult {
   fetched: number;
   sourceErrors: { source: string; error: string }[];
   skippedSources: string[];
-  created: { userId: string; applicationId: number; route: Route; title: string; company: string }[];
+  created: { userId: string; applicationId: number; title: string; company: string }[];
   rejected: Record<string, number>; // why jobs didn't match, by stage
 }
+
+// BL-01: company names compared loosely ("Acme Inc." blocks "ACME").
+export const companyKey = (name: string) => String(name ?? "").toLowerCase().replace(/\b(inc|ltd|llc|limited|plc|corp|corporation|gmbh|co)\b\.?/g, "").replace(/[^a-z0-9]+/g, "");
+
+// AP-04: a cover letter is written when the job asks for one.
+export const asksForCoverLetter = (description: string) => /\b(cover(ing)? letter|letter of (motivation|interest)|motivation letter)\b/i.test(String(description ?? ""));
 
 export const londonDay = (now: Date) => now.toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
 
@@ -72,26 +77,27 @@ export async function runSearch(deps: { store: PipelineStore; llm: LLM | null; n
 
   for (const { userId, profile } of users) {
     let made = await store.createdOn(userId, day);
+    const blocked = new Set((profile.blockedCompanies ?? []).map(companyKey));
+    const appliedSince = new Date(now.getTime() - REMATCH_AFTER_DAYS * 86400000);
     const seen = new Set<string>();
     const mine: Record<string, number> = {};
     const reject = (stage: string) => { result.rejected[stage] = (result.rejected[stage] ?? 0) + 1; mine[stage] = (mine[stage] ?? 0) + 1; };
     let matched = 0;
     for (const job of jobs) {
-      if (made >= DAILY_APPLY_CAP) { reject("daily limit"); continue; }
+      if (made >= DAILY_MATCH_CAP) { reject("daily limit"); continue; }
+      if (blocked.has(companyKey(job.company))) { reject("blocked"); continue; } // BL-01
       const ev = evaluate(job, profile, now);
       if (!ev.pass) { reject(ev.stage); continue; }
-      // MT-07: the same role twice in one run, or already applied to.
-      if (seen.has(ev.key) || (await store.hasApplication(userId, ev.key))) { reject("duplicate"); continue; }
+      // MT-07: the same role twice in one run, already matched, or applied to in the last 3 months.
+      if (seen.has(ev.key) || (await store.hasApplication(userId, ev.key, appliedSince))) { reject("duplicate"); continue; }
       seen.add(ev.key);
       const jobId = ids.get(`${job.source}:${job.sourceId}`);
       if (!jobId) continue;
 
       const injection = checkInjection(job.description); // TL-04
-      const ats = job.ats ?? atsFromUrl(job.url);
-      const route = routeFor({ score: ev.score.total, ats, flagged: injection.flagged, autoThreshold: profile.thresholds.auto });
       const place = { region: ev.region, mode: ev.mode, countries: ev.place.countries };
       const tailored = await tailor(profile, job, llm, {
-        coverLetter: wantsCoverLetter(place), // AP-04
+        coverLetter: wantsCoverLetter(place, { required: asksForCoverLetter(job.description) }), // AP-04
         immigrationText: immigrationText(place), // WA-05
       });
       const flags = [
@@ -100,13 +106,13 @@ export async function runSearch(deps: { store: PipelineStore; llm: LLM | null; n
       ];
       const applicationId = await store.createApplication({
         userId, jobId, dedupeKey: ev.key, region: ev.region, mode: ev.mode, countries: ev.place.countries,
-        score: ev.score.total, breakdown: ev.score, route,
-        status: route === "auto" ? "queued" : "needs_approval",
+        score: ev.score.total, breakdown: ev.score,
         flags, tailored,
       });
+      if (applicationId < 0) continue;
       made += 1;
       matched += 1;
-      result.created.push({ userId, applicationId, route, title: job.title, company: job.company });
+      result.created.push({ userId, applicationId, title: job.title, company: job.company });
     }
     await store.recordRun?.(userId, { at: now.toISOString(), checked: jobs.length, matched, rejected: mine, sourceErrors: run.errors.length, skippedSources: run.skipped.length });
   }

@@ -1,29 +1,27 @@
 import Link from "next/link";
 import { getDb } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { getProfile, listApplications } from "@/lib/store";
-import { waitingReason } from "@/lib/reasons";
-import { setStatusAction } from "@/app/actions";
+import { listApplications } from "@/lib/store";
+import { APPLIED_RETENTION_DAYS } from "@/lib/config";
 import type { Status } from "@/lib/config";
 import { Empty, PageHeader, Score, StatusBadge } from "@/components/ui";
 
 const VIEWS: { key: string; label: string; statuses?: Status[] }[] = [
-  { key: "waiting", label: "Waiting for you", statuses: ["needs_approval", "needs_action"] },
-  { key: "queued", label: "Queued", statuses: ["queued"] },
-  { key: "active", label: "In progress", statuses: ["applied", "response", "interview", "offer"] },
-  { key: "closed", label: "Closed", statuses: ["rejected", "withdrawn", "skipped"] },
+  { key: "ready", label: "Ready to apply", statuses: ["new"] },
+  { key: "applied", label: "Applied", statuses: ["applied", "response", "interview", "offer"] },
+  { key: "closed", label: "Closed", statuses: ["rejected", "dismissed", "expired"] },
   { key: "all", label: "All" },
 ];
 
 export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const user = await requireUser();
-  const { view = "waiting" } = await searchParams;
+  const { view = "ready" } = await searchParams;
   const current = VIEWS.find((v) => v.key === view) ?? VIEWS[0];
-  const db = await getDb();
-  const [apps, profile] = await Promise.all([listApplications(db, user.id, current.statuses), getProfile(db, user.id)]);
+  const apps = await listApplications(await getDb(), user.id, current.statuses);
+  const deleteOn = (applied: Date) => new Date(applied.getTime() + APPLIED_RETENTION_DAYS * 86400000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   return (
     <>
-      <PageHeader title="Applications" intro="Every role the app matched, what it did, and what's waiting for you." />
+      <PageHeader title="Matches" intro="Every role the app matched for you, with a CV made for each. Applied ones are kept for 6 months, then deleted with their documents." />
       <div role="tablist" className="mb-5 flex flex-wrap gap-2">
         {VIEWS.map((v) => (
           <Link key={v.key} role="tab" aria-selected={v.key === current.key} href={`/applications?view=${v.key}`}
@@ -45,19 +43,13 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                 <tr key={a.id} className="hover:bg-canvas">
                   <td className="px-4 py-3">
                     <Link href={`/applications/${a.id}`} className="font-medium hover:text-accent">{a.title}</Link>
-                    {(a.status === "needs_approval" || a.status === "needs_action") && <p className="text-xs">{waitingReason(a, profile.thresholds?.auto).short}</p>}
                     <p className="text-muted">{a.company}{a.flags.length > 0 && <span className="ml-2 text-warn" title={a.flags.join("\n")}>⚑ {a.flags.length} note{a.flags.length > 1 ? "s" : ""}</span>}</p>
                   </td>
                   <td className="px-4 py-3 text-muted">{a.region}, {a.mode}</td>
                   <td className="px-4 py-3"><Score value={a.score} /></td>
                   <td className="px-4 py-3">
                     <StatusBadge status={a.status} />
-                    {a.status === "queued" && (
-                      <form action={setStatusAction} className="mt-1">
-                        <input type="hidden" name="id" value={a.id} /><input type="hidden" name="status" value="skipped" /><input type="hidden" name="note" value="Cancelled before it was submitted" />
-                        <button className="text-xs text-muted underline hover:text-bad" aria-label={`Cancel ${a.title} at ${a.company}`}>Cancel</button>
-                      </form>
-                    )}
+                    {a.applied_at && <p className="mt-1 text-xs text-muted">Deleted {deleteOn(a.applied_at)}</p>}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-muted">{a.updated_at.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</td>
                 </tr>

@@ -17,7 +17,7 @@ beforeAll(async () => {
   if (!URL) return;
   const c = new pg.Client({ connectionString: URL });
   await c.connect();
-  await c.query("DROP TABLE IF EXISTS mail_outbox, report_runs, source_fetches, submissions, events, applications, jobs, boards, profiles, email_tokens, sessions, users CASCADE");
+  await c.query("DROP TABLE IF EXISTS mail_outbox, report_runs, digest_runs, search_runs, source_fetches, submissions, events, applications, jobs, boards, profiles, email_tokens, sessions, users CASCADE");
   await c.end();
   db = await openDb(URL);
 });
@@ -30,8 +30,8 @@ async function verifiedUser(email: string) {
   return user;
 }
 
-async function seedApplication(userId: string) {
-  const board = { ats: "greenhouse", board: `acme${userId.slice(0, 6)}`, company: "Acme" } as const;
+async function seedApplication(userId: string, company = "Acme") {
+  const board = { ats: "greenhouse", board: `${company.toLowerCase()}${userId.slice(0, 6)}`, company } as const;
   await db.query("UPDATE boards SET active = false WHERE user_id = $1", [userId]);
   await store.addBoard(db, userId, board);
   const desc = "Business Analyst: user stories, acceptance criteria, Jira, SQL, agile, stakeholder management, insurance. 3+ years of experience.";
@@ -41,7 +41,7 @@ async function seedApplication(userId: string) {
   });
   const pipe = new store.PgPipelineStore(db, londonDay(NOW));
   const run = await runSearch({ store: pipe, llm: null, now: NOW, fetchImpl: impl });
-  return run.created.find((c) => c.userId === userId)!.applicationId;
+  return run.created.find((c) => c.userId === userId && c.company === company)!.applicationId;
 }
 
 d("AU accounts", () => {
@@ -104,71 +104,112 @@ d("PR profile storage", () => {
 });
 
 d("TR status flow", () => {
-  test("TR-01 the allowed path: queued → applied → response → interview → offer", async () => {
+  test("TR-01 the allowed path: ready → applied → heard back → interview → offer", async () => {
     const u = await verifiedUser("tr1@example.com");
     const id = await seedApplication(u.id);
-    expect((await store.getApplication(db, u.id, id))!.status).toBe("queued");
+    expect((await store.getApplication(db, u.id, id))!.status).toBe("new");
     for (const s of ["applied", "response", "interview", "offer"] as const) await store.setStatus(db, u.id, id, s);
     const app = (await store.getApplication(db, u.id, id))!;
     expect(app.status).toBe("offer");
     expect(app.applied_at).not.toBeNull();
     expect((await store.events(db, u.id, id)).filter((e) => e.kind === "status")).toHaveLength(4);
   });
-  test("TR-01 moves that skip the flow are refused", async () => {
-    expect(canMove("queued", "interview")).toBe(false);
+  test("TR-01 moves that skip the flow are refused; a mistaken 'applied' can be undone", async () => {
+    expect(canMove("new", "interview")).toBe(false);
     expect(canMove("rejected", "applied")).toBe(false);
     const u = await verifiedUser("tr1b@example.com");
     const id = await seedApplication(u.id);
     await expect(store.setStatus(db, u.id, id, "offer")).rejects.toMatchObject({ code: "BAD_MOVE" });
+    await store.setStatus(db, u.id, id, "applied");
+    await store.setStatus(db, u.id, id, "new");
+    expect((await store.getApplication(db, u.id, id))!.applied_at).toBeNull();
   });
 });
 
 d("MT-07 duplicates in the database", () => {
-  test("MT-07 the database refuses a second application for the same role", async () => {
+  test("MT-07 an open match blocks a second one; an application older than 3 months doesn't", async () => {
     const u = await verifiedUser("mt7@example.com");
-    await seedApplication(u.id);
+    const id = await seedApplication(u.id);
     const pipe = new store.PgPipelineStore(db, "2026-10-14");
-    const apps = await store.listApplications(db, u.id);
-    const key = (await db.query("SELECT dedupe_key FROM applications WHERE id = $1", [apps[0].id])).rows[0].dedupe_key;
-    expect(await pipe.hasApplication(u.id, key)).toBe(true);
+    const key = (await db.query("SELECT dedupe_key FROM applications WHERE id = $1", [id])).rows[0].dedupe_key;
+    const since = new Date(Date.now() - 91 * 86400000);
+    expect(await pipe.hasApplication(u.id, key, since)).toBe(true);
+    await store.setStatus(db, u.id, id, "applied");
+    expect(await pipe.hasApplication(u.id, key, since)).toBe(true);
+    await db.query("UPDATE applications SET applied_at = now() - interval '100 days' WHERE id = $1", [id]);
+    expect(await pipe.hasApplication(u.id, key, since)).toBe(false);
+  });
+});
+
+d("RT keeping and deleting", () => {
+  const day = 86400000;
+  test("RT-01 a match left alone for 30 days expires", async () => {
+    const u = await verifiedUser("rt1@example.com");
+    const id = await seedApplication(u.id);
+    await db.query("UPDATE applications SET updated_at = now() - interval '31 days' WHERE id = $1", [id]);
+    await store.housekeeping(db, new Date());
+    expect((await store.getApplication(db, u.id, id))!.status).toBe("expired");
+  });
+  test("RT-02 six months after applying, the CV, cover letter and record are deleted", async () => {
+    const u = await verifiedUser("rt2@example.com");
+    const keep = await seedApplication(u.id);
+    await store.setStatus(db, u.id, keep, "applied");
+    const old = await seedApplication(u.id, "Oldco");
+    await store.setStatus(db, u.id, old, "applied");
+    await store.setStatus(db, u.id, old, "interview");
+    await db.query("UPDATE applications SET applied_at = $2 WHERE id = $1", [old, new Date(Date.now() - 184 * day)]);
+    await store.housekeeping(db, new Date());
+    expect(await store.getApplication(db, u.id, old)).toBeNull();
+    expect((await db.query("SELECT 1 FROM events WHERE application_id = $1", [old])).rows).toHaveLength(0);
+    expect(await store.getApplication(db, u.id, keep)).not.toBeNull();
+  });
+  test("RT-03 dismissed and expired matches are deleted after 3 months", async () => {
+    const u = await verifiedUser("rt3@example.com");
+    const id = await seedApplication(u.id);
+    await store.setStatus(db, u.id, id, "dismissed");
+    await db.query("UPDATE applications SET updated_at = now() - interval '92 days' WHERE id = $1", [id]);
+    await store.housekeeping(db, new Date());
+    expect(await store.getApplication(db, u.id, id)).toBeNull();
+  });
+  test("RT-04 applications from the old auto-apply flow are kept, as ready or not for me", async () => {
+    const u = await verifiedUser("rt4@example.com");
+    const a = await seedApplication(u.id);
+    const b = await seedApplication(u.id, "Skipco");
+    await db.query("UPDATE applications SET status = 'queued' WHERE id = $1", [a]);
+    await db.query("UPDATE applications SET status = 'skipped' WHERE id = $1", [b]);
+    const again = await openDb(URL!); // runs the migration
+    await again.close();
+    expect((await store.getApplication(db, u.id, a))!.status).toBe("new");
+    expect((await store.getApplication(db, u.id, b))!.status).toBe("dismissed");
   });
 });
 
 d("DP data rights", () => {
-  test("DP-01 export holds the account, profile, applications, events and submissions", async () => {
+  test("DP-01 export holds the account, profile, matches with their documents, and history", async () => {
     const u = await verifiedUser("dp1@example.com");
-    const id = await seedApplication(u.id);
-    await store.logSubmission(db, u.id, id, "https://job-boards.greenhouse.io/acme/jobs/1", { "First Name": "Alex" });
+    await seedApplication(u.id);
     const out = await store.exportAll(db, u.id);
     expect(out.account.email).toBe("dp1@example.com");
     expect(out.profile.fullName).toBe("Alex Example");
     expect(out.applications).toHaveLength(1);
-    expect(out.submissions).toHaveLength(1);
+    expect(out.applications[0].tailored.roles.length).toBeGreaterThan(0);
     expect(JSON.stringify(out)).not.toContain("password_hash");
   });
   test("DP-02 deleting an account removes all of its data", async () => {
     const u = await verifiedUser("dp2@example.com");
-    const id = await seedApplication(u.id);
-    await store.logSubmission(db, u.id, id, "https://x", {});
+    await seedApplication(u.id);
+    await store.recordDigest(db, u.id, new Date());
     await store.deleteAccount(db, u.id);
-    for (const table of ["users", "profiles", "boards", "applications", "events", "submissions", "sessions"]) {
+    for (const table of ["users", "profiles", "boards", "applications", "events", "sessions", "digest_runs"]) {
       const col = table === "users" ? "id" : "user_id";
       const { rows } = await db.query(`SELECT 1 FROM ${table} WHERE ${col} = $1`, [u.id]);
       expect(rows, table).toHaveLength(0);
     }
   });
-  test("DP-03 every submission is logged with the target and what was sent", async () => {
-    const u = await verifiedUser("dp3@example.com");
-    const id = await seedApplication(u.id);
-    await store.logSubmission(db, u.id, id, "https://job-boards.greenhouse.io/acme/jobs/1", { Email: "alex@example.com", "Resume/CV": "cv.pdf" });
-    const [s] = await store.submissions(db, u.id, id);
-    expect(s.target_url).toBe("https://job-boards.greenhouse.io/acme/jobs/1");
-    expect(s.payload).toEqual({ Email: "alex@example.com", "Resume/CV": "cv.pdf" });
-  });
 });
 
-d("TL-06 waiting applications use the latest CV", () => {
-  test("TL-06 an application tailored before a CV change is tailored again from the new CV before it's sent", async () => {
+d("TL-06 matches use the latest CV", () => {
+  test("TL-06 a match tailored before a CV change is tailored again from the new CV when you open it", async () => {
     const { freshTailored, isStale } = await import("@/lib/refresh");
     const u = await verifiedUser("tl6@example.com");
     const id = await seedApplication(u.id);
@@ -189,7 +230,7 @@ d("TL-06 waiting applications use the latest CV", () => {
     expect(isStale(after, fresh)).toBe(false);
     expect((await store.events(db, u.id, id)).map((e) => e.kind)).toContain("cv_updated");
   });
-  test("TL-06 applications already sent keep the CV they were sent with", async () => {
+  test("TL-06 once applied, the documents stay as they were sent", async () => {
     const { isStale } = await import("@/lib/refresh");
     const u = await verifiedUser("tl6b@example.com");
     const id = await seedApplication(u.id);
@@ -199,15 +240,17 @@ d("TL-06 waiting applications use the latest CV", () => {
     expect(isStale(app, changed)).toBe(true);
     expect(isStale({ ...app, status: "applied" }, changed)).toBe(false);
   });
-});
-
-d("TR-06 worker check-ins", () => {
-  test("TR-06 using the worker key records when the worker last checked in", async () => {
-    const u = await verifiedUser("tr6@example.com");
-    expect(await store.workerSeenAt(db, u.id)).toBeNull();
-    const token = await store.newWorkerToken(db, u.id);
-    expect((await store.userForWorker(db, token))?.id).toBe(u.id);
-    expect(await store.workerSeenAt(db, u.id)).toBeInstanceOf(Date);
-    expect(await store.userForWorker(db, "jaa_wrong")).toBeNull();
+  test("DOC-04 text you edited is never replaced automatically; you're told the CV changed instead", async () => {
+    const { editedButOutdated, freshTailored, isStale } = await import("@/lib/refresh");
+    const u = await verifiedUser("doc4@example.com");
+    const id = await seedApplication(u.id);
+    const app = (await store.getApplication(db, u.id, id))!;
+    await store.saveTailored(db, u.id, id, { ...app.tailored, summary: "My own summary.", edited: true });
+    const edited = (await store.getApplication(db, u.id, id))!;
+    const p = await store.getProfile(db, u.id);
+    const changed = { ...p, summary: "A new master summary." };
+    expect(isStale(edited, changed)).toBe(false);
+    expect(editedButOutdated(edited, changed)).toBe(true);
+    expect((await freshTailored(db, u.id, edited, changed, null)).summary).toBe("My own summary.");
   });
 });

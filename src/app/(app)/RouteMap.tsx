@@ -7,9 +7,8 @@ type Counts = Partial<Record<Status, number>>;
 export function RouteMap({ counts }: { counts: Counts }) {
   const n = (...s: Status[]) => s.reduce((t, k) => t + (counts[k] ?? 0), 0);
   const stops = [
-    { label: "Matched", value: n("needs_approval", "needs_action", "queued", "applied", "response", "interview", "offer", "rejected", "withdrawn") },
-    { label: "Approved", value: n("queued", "applied", "response", "interview", "offer", "rejected", "withdrawn") },
-    { label: "Sent", value: n("applied", "response", "interview", "offer", "rejected", "withdrawn") },
+    { label: "Matched", value: n("new", "applied", "response", "interview", "offer", "rejected", "dismissed", "expired") },
+    { label: "Applied", value: n("applied", "response", "interview", "offer", "rejected") },
     { label: "Heard back", value: n("response", "interview", "offer", "rejected") },
     { label: "Interview", value: n("interview", "offer") },
     { label: "Offer", value: n("offer") },
@@ -21,10 +20,10 @@ export function RouteMap({ counts }: { counts: Counts }) {
     <section aria-label="Where your applications have got to" className="mb-10 rounded-2xl border border-line bg-surface px-5 pb-6 pt-7 md:px-8">
       <div className="relative">
         {/* The route itself, running behind the stops (wide screens). */}
-        <div aria-hidden className="absolute left-[8.33%] right-[8.33%] top-[calc(3.5rem-1px)] hidden h-0.5 bg-line md:block">
+        <div aria-hidden className="absolute left-[10%] right-[10%] top-[calc(3.5rem-1px)] hidden h-0.5 bg-line md:block">
           <div className="route-line h-full bg-accent" style={{ width: `${pct * 100}%` }} />
         </div>
-        <ol className="relative grid grid-cols-3 gap-y-8 md:grid-cols-6">
+        <ol className="relative grid grid-cols-3 gap-y-8 md:grid-cols-5">
           {stops.map((s, i) => {
             const on = s.value > 0;
             const last = i === stops.length - 1;

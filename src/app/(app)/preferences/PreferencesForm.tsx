@@ -99,10 +99,9 @@ export function PreferencesForm({ profile: p }: { profile: Profile }) {
         </Field>
       </Card>
 
-      <Card title="Automation">
+      <Card title="Matching">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Apply from score" hint="Matches under this are skipped (default 75)." htmlFor="applyThreshold"><input id="applyThreshold" name="applyThreshold" type="number" min={50} max={100} defaultValue={p.thresholds.apply} className="input" /></Field>
-          <Field label="Auto-submit from score" hint="At or above this, simple forms go in without asking (default 85)." htmlFor="autoThreshold"><input id="autoThreshold" name="autoThreshold" type="number" min={50} max={100} defaultValue={p.thresholds.auto} className="input" /></Field>
+          <Field label="Match from score" hint="Jobs scoring under this are skipped (default 75). Each match gets its own CV." htmlFor="applyThreshold"><input id="applyThreshold" name="applyThreshold" type="number" min={50} max={100} defaultValue={p.thresholds.apply} className="input" /></Field>
         </div>
         <label className="mt-4 flex items-center gap-2 text-sm"><input type="checkbox" name="paused" defaultChecked={p.paused} /> Pause searching</label>
       </Card>

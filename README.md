@@ -1,20 +1,21 @@
 # Job Auto-Apply
 
 Finds remote and international roles you're eligible for, scores them against your master CV,
-tailors an honest CV (and cover letter where it helps), and applies, either automatically on
-simple forms or after your approval. Built to the "Job Auto-Apply App: Requirements v1" doc.
+and for every match prepares an honest, tailored CV (plus a cover letter where you'd need
+sponsorship or the job asks for one). You download them as PDF or Word, apply on the employer's
+site yourself, and mark the match applied. Applied matches and their documents are deleted after
+6 months. Built to the "Job Auto-Apply App: Requirements" doc.
 
 ## How it fits together
 
 | Part | Where it runs | What it does |
 | --- | --- | --- |
-| Web app (Next.js) | Render, free | Sign-up, profile, master CV, preferences, approval queue, tracking |
+| Web app (Next.js) | Render, free | Sign-up, profile, master CV, preferences, matches, documents, tracking |
 | Database | Neon, free | Accounts, profiles, jobs, applications, history |
-| Scheduler | GitHub Actions, free | Calls the app 4 times a day to search, and at midnight for the report |
-| Laptop worker | Your computer | Opens application forms in a real browser, fills them, submits |
+| Scheduler | GitHub Actions, free | Calls the app 4 times a day to search, and hourly to tidy up and send match emails |
 | AI | Gemini free tier | Rewords CV bullets and writes cover letters. Never sees your name, contact details or self-ID answers |
 
-Scoring, filters, work-authorisation answers and form filling are plain code. The AI only
+Scoring, filters, work-authorisation answers and the PDF and Word files are plain code. The AI only
 rewords; a validator rejects any skill, number, title, employer or date it adds that isn't in
 your master CV, and keeps your own words instead.
 
@@ -36,19 +37,19 @@ your master CV, and keeps your own words instead.
    verification link) are written to the Render logs.
 6. **Sign up** in the app, confirm your email, then fill in Details, Master CV and Preferences.
 
-## The laptop worker
+## Using it
 
-```
-npm install
-npx playwright install chromium
-cp worker/.env.example worker/.env   # then add APP_URL and the key from Settings → Laptop worker
-npm run worker                       # submits queued applications (85+ on simple forms)
-npm run worker -- --review           # walks your approval queue: fills each form, you click submit
-```
+- Each match has its CV (and cover letter if needed) ready to download as PDF or Word. You can edit
+  the text first, or regenerate it from your latest master CV.
+- The match page lists the answers for application forms (work authorisation, the immigration
+  wording for US roles, notice period, salary, links), each with a copy button.
+- Press **I've applied** when you've sent it, then update progress (heard back, interview, offer, rejected).
+- **Not for me** dismisses a match; **Block** stops a company being matched again (Companies page to undo).
+- Match emails come daily or every two days at the hour you pick (Settings).
 
-The worker uses its own browser profile in `worker/.profile`, so anything you sign in to there
-stays signed in. Forms with a CAPTCHA, an essay question or an unknown required field are never
-auto-submitted; you get an email instead.
+What's kept: untouched matches expire after 30 days; dismissed and expired ones are deleted after
+3 months; applied ones, with their documents, after 6 months. A role you applied to isn't matched
+again for 3 months.
 
 ## Test it
 

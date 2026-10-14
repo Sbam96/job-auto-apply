@@ -19,7 +19,7 @@ export async function checkPassword(password: string, stored: string): Promise<b
   return timingSafeEqual(actual, expected);
 }
 
-// Random tokens for sessions, email links and the laptop worker. Only their hash is stored.
+// Random tokens for sessions and email links. Only their hash is stored.
 export const newToken = () => randomBytes(32).toString("base64url");
 export const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
 

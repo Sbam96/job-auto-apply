@@ -2,13 +2,14 @@
 import type { NewApplication, PipelineStore, UserRunSummary } from "@/lib/pipeline";
 import type { Board } from "@/lib/sources";
 import type { Job, Profile } from "@/lib/types";
+import { APPLIED_STATUSES, type Status } from "@/lib/config";
 
 export class MemoryStore implements PipelineStore {
   users: { userId: string; profile: Profile }[] = [];
   boards: Board[] = [];
   fetches = new Map<string, number>();
   jobs = new Map<string, { id: number; job: Job }>();
-  apps: (NewApplication & { id: number; day: string })[] = [];
+  apps: (NewApplication & { id: number; day: string; status: Status; appliedAt: Date | null })[] = [];
   runs = new Map<string, UserRunSummary>();
   async recordRun(userId: string, summary: UserRunSummary) { this.runs.set(userId, summary); }
   day = "";
@@ -26,11 +27,13 @@ export class MemoryStore implements PipelineStore {
     }
     return out;
   }
-  async hasApplication(userId: string, key: string) { return this.apps.some((a) => a.userId === userId && a.dedupeKey === key); }
+  async hasApplication(userId: string, key: string, appliedSince: Date) {
+    return this.apps.some((a) => a.userId === userId && a.dedupeKey === key && (!APPLIED_STATUSES.includes(a.status) || !a.appliedAt || a.appliedAt >= appliedSince));
+  }
   async createdOn(userId: string, day: string) { return this.apps.filter((a) => a.userId === userId && a.day === day).length; }
   async createApplication(app: NewApplication) {
     const id = this.apps.length + 1;
-    this.apps.push({ ...app, id, day: this.day });
+    this.apps.push({ ...app, id, day: this.day, status: "new", appliedAt: null });
     return id;
   }
 }

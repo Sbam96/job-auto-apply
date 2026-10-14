@@ -1,5 +1,5 @@
 // Every database read and write. Each query that touches user data filters by user id (AU-04).
-import { VERIFY_TOKEN_HOURS, SESSION_DAYS, type Status } from "./config";
+import { APPLIED_RETENTION_DAYS, APPLIED_STATUSES, CLOSED_RETENTION_DAYS, MATCH_EXPIRY_DAYS, VERIFY_TOKEN_HOURS, SESSION_DAYS, type Status } from "./config";
 import { withDefaults } from "./cv";
 import type { Db } from "./db";
 import { checkPassword, hashPassword, hashToken, newToken, normaliseEmail } from "./auth";
@@ -97,26 +97,6 @@ export async function userByEmail(db: Db, email: string) {
   return rows[0] ?? null;
 }
 
-// The laptop worker signs in with its own token, shown once in Settings.
-export async function newWorkerToken(db: Db, userId: string): Promise<string> {
-  const token = `jaa_${newToken()}`;
-  await db.query("UPDATE users SET worker_token_hash = $2 WHERE id = $1", [userId, hashToken(token)]);
-  return token;
-}
-
-export async function userForWorker(db: Db, token: string | null): Promise<User | null> {
-  if (!token) return null;
-  // Records when the worker last checked in, so the dashboard can show whether it's running.
-  const { rows } = await db.query<{ id: string; email: string; verified_at: Date | null }>(
-    "UPDATE users SET worker_seen_at = now() WHERE worker_token_hash = $1 AND verified_at IS NOT NULL RETURNING id, email, verified_at", [hashToken(token)]);
-  return rows[0] ? { id: rows[0].id, email: rows[0].email, verifiedAt: rows[0].verified_at } : null;
-}
-
-export async function workerSeenAt(db: Db, userId: string): Promise<Date | null> {
-  const { rows } = await db.query<{ worker_seen_at: Date | null }>("SELECT worker_seen_at FROM users WHERE id = $1", [userId]);
-  return rows[0]?.worker_seen_at ?? null;
-}
-
 // ---------- profile ----------
 
 export async function getProfile(db: Db, userId: string): Promise<Profile> {
@@ -150,14 +130,14 @@ export async function removeBoard(db: Db, userId: string, id: number) {
 // ---------- applications ----------
 
 export interface ApplicationRow {
-  id: number; status: Status; route: string; score: number; region: string; mode: string; countries: string[];
+  id: number; status: Status; score: number; region: string; mode: string; countries: string[];
   breakdown: { title: number; skills: number; experience: number; domain: number; total: number; matchedSkills: string[]; missingSkills: string[] };
-  flags: string[]; tailored: Tailored; unresolved: { label: string; reason: string }[]; note: string | null;
+  flags: string[]; tailored: Tailored; note: string | null;
   created_at: Date; updated_at: Date; applied_at: Date | null;
   job_id: number; company: string; title: string; location: string; url: string; description: string; ats: string | null; attribution: string | null; salary: Job["salary"];
 }
 
-const APP_SELECT = `SELECT a.id, a.status, a.route, a.score, a.region, a.mode, a.countries, a.breakdown, a.flags, a.tailored, a.unresolved, a.note,
+const APP_SELECT = `SELECT a.id, a.status, a.score, a.region, a.mode, a.countries, a.breakdown, a.flags, a.tailored, a.note,
   a.created_at, a.updated_at, a.applied_at, j.id AS job_id, j.company, j.title, j.location, j.url, j.description, j.ats, j.attribution, j.salary
   FROM applications a JOIN jobs j ON j.id = a.job_id`;
 
@@ -180,7 +160,7 @@ export async function setStatus(db: Db, userId: string, id: number, to: Status, 
   if (!canMove(app.status, to)) throw new AppError("BAD_MOVE", `Can't move from ${app.status} to ${to}.`);
   await db.query(
     `UPDATE applications SET status = $3, note = COALESCE($4, note), updated_at = now(),
-       applied_at = CASE WHEN $3 = 'applied' AND applied_at IS NULL THEN now() ELSE applied_at END
+       applied_at = CASE WHEN $3 = 'applied' AND applied_at IS NULL THEN now() WHEN $3 = 'new' THEN NULL ELSE applied_at END
      WHERE user_id = $1 AND id = $2`, [userId, id, to, note ?? null]);
   await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'status', $3)", [userId, id, JSON.stringify({ from: app.status, to, note: note ?? null })]);
 }
@@ -189,34 +169,10 @@ export async function saveTailored(db: Db, userId: string, id: number, tailored:
   await db.query("UPDATE applications SET tailored = $3, updated_at = now() WHERE user_id = $1 AND id = $2", [userId, id, JSON.stringify(tailored)]);
 }
 
-export async function markNeedsAction(db: Db, userId: string, id: number, unresolved: { label: string; reason: string }[]) {
-  await db.query("UPDATE applications SET status = 'needs_action', unresolved = $3, updated_at = now() WHERE user_id = $1 AND id = $2", [userId, id, JSON.stringify(unresolved)]);
-  await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'needs_action', $3)", [userId, id, JSON.stringify(unresolved)]);
-}
-
 export async function events(db: Db, userId: string, applicationId: number) {
   const { rows } = await db.query<{ kind: string; detail: unknown; created_at: Date }>(
     "SELECT kind, detail, created_at FROM events WHERE user_id = $1 AND application_id = $2 ORDER BY id", [userId, applicationId]);
   return rows;
-}
-
-// DP-03: what was sent where, for every submission.
-export async function logSubmission(db: Db, userId: string, applicationId: number, targetUrl: string, payload: unknown) {
-  await db.query("INSERT INTO submissions (user_id, application_id, target_url, payload) VALUES ($1, $2, $3, $4)", [userId, applicationId, targetUrl, JSON.stringify(payload)]);
-}
-
-export async function submissions(db: Db, userId: string, applicationId?: number) {
-  const { rows } = applicationId
-    ? await db.query("SELECT application_id, target_url, payload, sent_at FROM submissions WHERE user_id = $1 AND application_id = $2 ORDER BY id", [userId, applicationId])
-    : await db.query("SELECT application_id, target_url, payload, sent_at FROM submissions WHERE user_id = $1 ORDER BY id", [userId]);
-  return rows;
-}
-
-// The worker's next job: auto-submits, or (in review mode) the approval queue.
-export async function nextForWorker(db: Db, userId: string, mode: "auto" | "review") {
-  const statuses = mode === "auto" ? ["queued"] : ["needs_approval", "queued"];
-  const { rows } = await db.query<ApplicationRow>(`${APP_SELECT} WHERE a.user_id = $1 AND a.status = ANY($2) ORDER BY a.score DESC, a.id LIMIT 1`, [userId, statuses]);
-  return rows[0] ?? null;
 }
 
 export async function dashboardCounts(db: Db, userId: string) {
@@ -227,6 +183,37 @@ export async function dashboardCounts(db: Db, userId: string) {
 export async function lastSearch(db: Db, userId: string): Promise<UserRunSummary | null> {
   const { rows } = await db.query<{ summary: UserRunSummary }>("SELECT summary FROM search_runs WHERE user_id = $1", [userId]);
   return rows[0]?.summary ?? null;
+}
+
+// ---------- housekeeping (RT-01 to RT-03) ----------
+
+// Runs every hour. Expires untouched matches, and deletes what's past its keep-by date.
+export async function housekeeping(db: Db, now: Date) {
+  const day = 86400000;
+  const expireBefore = new Date(now.getTime() - MATCH_EXPIRY_DAYS * day);
+  const expired = await db.query<{ id: number; user_id: string }>(
+    "UPDATE applications SET status = 'expired', updated_at = $2 WHERE status = 'new' AND updated_at < $1 RETURNING id, user_id", [expireBefore, now]);
+  for (const r of expired.rows) {
+    await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'status', $3)", [r.user_id, r.id, JSON.stringify({ from: "new", to: "expired", note: `No action for ${MATCH_EXPIRY_DAYS} days` })]);
+  }
+  // RT-02: 6 months after applying, the CV, cover letter and the record itself go.
+  const applied = await db.query("DELETE FROM applications WHERE status = ANY($1) AND applied_at < $2",
+    [APPLIED_STATUSES, new Date(now.getTime() - APPLIED_RETENTION_DAYS * day)]);
+  // RT-03: dismissed and expired matches go after 3 months.
+  const closed = await db.query("DELETE FROM applications WHERE status IN ('dismissed', 'expired') AND updated_at < $1",
+    [new Date(now.getTime() - CLOSED_RETENTION_DAYS * day)]);
+  // Job listings no one is matched to any more hold nothing personal but aren't needed either.
+  await db.query("DELETE FROM jobs j WHERE first_seen < $1 AND NOT EXISTS (SELECT 1 FROM applications a WHERE a.job_id = j.id)", [new Date(now.getTime() - 30 * day)]);
+  return { expired: expired.rowCount ?? 0, deletedApplied: applied.rowCount ?? 0, deletedClosed: closed.rowCount ?? 0 };
+}
+
+export async function lastDigest(db: Db, userId: string): Promise<Date | null> {
+  const { rows } = await db.query<{ sent_at: Date }>("SELECT sent_at FROM digest_runs WHERE user_id = $1", [userId]);
+  return rows[0]?.sent_at ?? null;
+}
+
+export async function recordDigest(db: Db, userId: string, at: Date) {
+  await db.query("INSERT INTO digest_runs (user_id, sent_at) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET sent_at = EXCLUDED.sent_at", [userId, at]);
 }
 
 // ---------- data rights (DP-01, DP-02) ----------
@@ -240,7 +227,6 @@ export async function exportAll(db: Db, userId: string) {
     boards: await listBoards(db, userId),
     applications: await listApplications(db, userId),
     events: (await db.query("SELECT application_id, kind, detail, created_at FROM events WHERE user_id = $1 ORDER BY id", [userId])).rows,
-    submissions: await submissions(db, userId),
   };
 }
 
@@ -290,8 +276,12 @@ export class PgPipelineStore implements PipelineStore {
     return out;
   }
 
-  async hasApplication(userId: string, key: string) {
-    const { rows } = await this.db.query("SELECT 1 FROM applications WHERE user_id = $1 AND dedupe_key = $2", [userId, key]);
+  // MT-07: an open, dismissed or expired match for this role, or an application made since `appliedSince`
+  // (3 months). Older applications don't stop the role being matched again.
+  async hasApplication(userId: string, key: string, appliedSince: Date) {
+    const { rows } = await this.db.query(
+      "SELECT 1 FROM applications WHERE user_id = $1 AND dedupe_key = $2 AND (NOT (status = ANY($3)) OR applied_at IS NULL OR applied_at >= $4) LIMIT 1",
+      [userId, key, APPLIED_STATUSES, appliedSince]);
     return rows.length > 0;
   }
 
@@ -306,12 +296,12 @@ export class PgPipelineStore implements PipelineStore {
 
   async createApplication(a: NewApplication) {
     const { rows } = await this.db.query<{ id: number }>(
-      `INSERT INTO applications (user_id, job_id, dedupe_key, region, mode, countries, score, breakdown, route, status, flags, tailored, created_day)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-       ON CONFLICT (user_id, dedupe_key) DO NOTHING RETURNING id`,
-      [a.userId, a.jobId, a.dedupeKey, a.region, a.mode, a.countries, a.score, JSON.stringify(a.breakdown), a.route, a.status, JSON.stringify(a.flags), JSON.stringify(a.tailored), this.day]);
+      `INSERT INTO applications (user_id, job_id, dedupe_key, region, mode, countries, score, breakdown, status, flags, tailored, created_day)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'new',$9,$10,$11)
+       ON CONFLICT (user_id, dedupe_key) WHERE status = 'new' DO NOTHING RETURNING id`,
+      [a.userId, a.jobId, a.dedupeKey, a.region, a.mode, a.countries, a.score, JSON.stringify(a.breakdown), JSON.stringify(a.flags), JSON.stringify(a.tailored), this.day]);
     if (!rows.length) return -1;
-    await this.db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'created', $3)", [a.userId, rows[0].id, JSON.stringify({ route: a.route, score: a.score })]);
+    await this.db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'created', $3)", [a.userId, rows[0].id, JSON.stringify({ score: a.score })]);
     return rows[0].id;
   }
 }

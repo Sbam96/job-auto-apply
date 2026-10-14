@@ -62,8 +62,10 @@ export interface Profile {
   education: { institution: string; qualification: string; year: string }[];
   certifications: string[];
   skills: Skill[];
-  thresholds: { apply: number; auto: number };
+  thresholds: { apply: number };
   paused: boolean;
+  blockedCompanies: string[]; // BL-01: never matched with these employers
+  digest: { every: 1 | 2; hour: number }; // NT-01: digest email every 1 or 2 days, at this UK hour (0-23)
 }
 
 export interface Salary {
