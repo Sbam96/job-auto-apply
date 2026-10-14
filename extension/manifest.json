@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Job Auto-Apply",
+  "version": "1.0.0",
+  "description": "Fills job applications with your tailored CV and answers from Job Auto-Apply. You always press submit.",
+  "action": { "default_popup": "popup.html", "default_title": "Fill this application" },
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
+}

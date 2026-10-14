@@ -47,6 +47,15 @@ your master CV, and keeps your own words instead.
 - **Not for me** dismisses a match; **Block** stops a company being matched again (Companies page to undo).
 - Match emails come daily or every two days at the hour you pick (Settings).
 
+### Browser extension
+
+Settings → Browser extension: download the zip (already pointed at your app), unzip it, then in
+Chrome go to `chrome://extensions`, turn on Developer mode and choose **Load unpacked**. Generate a
+connection key in Settings and paste it into the extension. On any application page, click the
+icon: it recognises the match, fills your details, work-authorisation answers and diversity
+questions, attaches the tailored CV PDF, and outlines anything left for you in red. It never
+submits; press **Mark as applied** in the extension afterwards. The code is in `extension/`.
+
 What's kept: untouched matches expire after 30 days; dismissed and expired ones are deleted after
 3 months; applied ones, with their documents, after 6 months. A role you applied to isn't matched
 again for 3 months.

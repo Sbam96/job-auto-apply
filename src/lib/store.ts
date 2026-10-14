@@ -97,6 +97,31 @@ export async function userByEmail(db: Db, email: string) {
   return rows[0] ?? null;
 }
 
+// ---------- browser extension (EX-01) ----------
+
+// The extension signs in with its own key, shown once in Settings. A new key replaces the old one.
+export async function newExtensionKey(db: Db, userId: string): Promise<string> {
+  const token = `jaa_${newToken()}`;
+  await db.query("UPDATE users SET ext_token_hash = $2 WHERE id = $1", [userId, hashToken(token)]);
+  return token;
+}
+
+export async function revokeExtensionKey(db: Db, userId: string) {
+  await db.query("UPDATE users SET ext_token_hash = NULL WHERE id = $1", [userId]);
+}
+
+export async function userForExtension(db: Db, token: string | null): Promise<User | null> {
+  if (!token) return null;
+  const { rows } = await db.query<{ id: string; email: string; verified_at: Date | null }>(
+    "UPDATE users SET ext_seen_at = now() WHERE ext_token_hash = $1 AND verified_at IS NOT NULL RETURNING id, email, verified_at", [hashToken(token)]);
+  return rows[0] ? { id: rows[0].id, email: rows[0].email, verifiedAt: rows[0].verified_at } : null;
+}
+
+export async function extensionStatus(db: Db, userId: string) {
+  const { rows } = await db.query<{ has_key: boolean; ext_seen_at: Date | null }>("SELECT ext_token_hash IS NOT NULL AS has_key, ext_seen_at FROM users WHERE id = $1", [userId]);
+  return { connected: !!rows[0]?.has_key, seenAt: rows[0]?.ext_seen_at ?? null };
+}
+
 // ---------- profile ----------
 
 export async function getProfile(db: Db, userId: string): Promise<Profile> {

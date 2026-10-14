@@ -2,14 +2,16 @@ import { requireUser } from "@/lib/session";
 import { smtpConfigured } from "@/lib/mailer";
 import { Card, PageHeader, secondaryButtonClass } from "@/components/ui";
 import { getDb } from "@/lib/db";
-import { getProfile } from "@/lib/store";
-import { DeleteAccount, Notifications } from "./SettingsForms";
+import { extensionStatus, getProfile } from "@/lib/store";
+import { revokeExtensionAction } from "@/app/actions";
+import { DeleteAccount, ExtensionKey, Notifications } from "./SettingsForms";
 
 export default async function SettingsPage() {
   const user = await requireUser();
   const llm = !!process.env.GEMINI_API_KEY;
   const mail = smtpConfigured();
-  const profile = await getProfile(await getDb(), user.id);
+  const db = await getDb();
+  const [profile, ext] = await Promise.all([getProfile(db, user.id), extensionStatus(db, user.id)]);
   return (
     <>
       <PageHeader title="Settings" />
@@ -26,6 +28,22 @@ export default async function SettingsPage() {
             One email listing new matches with their documents ready, plus any still waiting for you. Sent to {user.email}. If there&apos;s nothing to tell you, nothing is sent.
           </p>
           <Notifications every={profile.digest.every} hour={profile.digest.hour} />
+        </Card>
+
+        <Card title="Browser extension">
+          <p className="mb-3 text-sm text-muted">
+            Fills job applications for you in Chrome, Edge or Brave: your details, work authorisation answers, and your tailored CV attached. It works on any job page, and you always press submit yourself.
+          </p>
+          <ol className="mb-4 list-decimal space-y-1 pl-5 text-sm">
+            <li><a href="/settings/extension" className="font-medium text-accent underline">Download the extension</a> and unzip it somewhere you&apos;ll keep it (e.g. Documents).</li>
+            <li>In Chrome, go to <code>chrome://extensions</code>, turn on <strong>Developer mode</strong> (top right), click <strong>Load unpacked</strong> and choose the unzipped folder.</li>
+            <li>Pin it from the jigsaw icon in the toolbar, then generate a key below and paste it into the extension.</li>
+          </ol>
+          <ExtensionKey />
+          <p className="mt-3 text-xs text-muted" data-extension-status>
+            {ext.connected ? (ext.seenAt ? `Connected. Last used ${ext.seenAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" })}.` : "A key has been generated but not used yet.") : "Not connected."}
+          </p>
+          {ext.connected && <form action={revokeExtensionAction} className="mt-2"><button className="text-xs text-muted underline hover:text-bad">Disconnect the extension</button></form>}
         </Card>
 
         <Card title="Your data">

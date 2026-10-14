@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" />
+  <title>Job Auto-Apply</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="airmail" aria-hidden="true"></div>
+  <header><img src="icon48.png" alt="" width="24" height="24" /><h1>Job Auto-Apply</h1></header>
+
+  <section id="connect" hidden>
+    <p>Connect to your account. In the app, go to <strong>Settings → Browser extension</strong>, generate a connection key and paste it here.</p>
+    <label for="key">Connection key</label>
+    <input id="key" autocomplete="off" spellcheck="false" placeholder="jaa_…" />
+    <button id="connectBtn" class="primary">Connect</button>
+  </section>
+
+  <section id="main" hidden>
+    <p id="who" class="muted"></p>
+    <div id="job" class="card" hidden>
+      <p class="eyebrow" id="jobEyebrow">Your match</p>
+      <p id="jobTitle" class="title"></p>
+      <p id="jobMeta" class="muted"></p>
+    </div>
+    <div id="pick" hidden>
+      <p id="pickText">This page isn't one of your matches yet.</p>
+      <label for="pickSelect">Fill it for one of your matches</label>
+      <select id="pickSelect"></select>
+    </div>
+    <div class="actions">
+      <button id="fillBtn" class="primary" hidden>Fill this form</button>
+      <button id="appliedBtn" hidden>Mark as applied</button>
+    </div>
+    <div id="result" hidden></div>
+    <button id="copyCover" hidden>Copy cover letter text</button>
+  </section>
+
+  <p id="status" role="status"></p>
+  <footer>
+    <a id="openApp" href="#" target="_blank">Open the app</a>
+    <button id="disconnect" class="link" hidden>Disconnect</button>
+  </footer>
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

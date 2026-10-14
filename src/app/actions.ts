@@ -248,6 +248,20 @@ export async function searchNowAction(): Promise<FormState> {
 
 // ---------- settings ----------
 
+// EX-01: the browser extension's connection key. A new key replaces the old one.
+export async function extensionKeyAction(): Promise<FormState> {
+  const user = await requireUser();
+  const token = await store.newExtensionKey(await getDb(), user.id);
+  revalidatePath("/settings");
+  return { ok: true, message: token };
+}
+
+export async function revokeExtensionAction() {
+  const user = await requireUser();
+  await store.revokeExtensionKey(await getDb(), user.id);
+  revalidatePath("/settings");
+}
+
 // NT-01: how often the digest email comes, and at what time (UK).
 export async function saveNotificationsAction(_: FormState, f: FormData): Promise<FormState> {
   const every = Number(f.get("every")) === 2 ? 2 : 1;
