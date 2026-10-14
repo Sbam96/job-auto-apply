@@ -24,14 +24,17 @@ export function editedButOutdated(app: Pick<ApplicationRow, "status" | "tailored
   return REFRESHABLE.has(app.status) && !!app.tailored?.edited && changed(app, profile);
 }
 
-export function tailorFor(app: ApplicationRow, profile: Profile, llm: LLM | null) {
+// `withCover`: also write a cover letter even where the rules wouldn't (DOC-06, you asked for one).
+export async function tailorFor(app: ApplicationRow, profile: Profile, llm: LLM | null, withCover = !!app.tailored?.coverOnRequest): Promise<Tailored> {
   const job: Job = {
     source: "greenhouse", sourceId: String(app.job_id), company: app.company, title: app.title, location: app.location,
     remote: app.mode === "remote", url: app.url, description: app.description ?? "", employmentType: null,
     salary: app.salary ?? null, postedAt: null, ats: (app.ats as Job["ats"]) ?? null, attribution: app.attribution ?? null,
   };
   const place = { region: app.region, mode: app.mode, countries: app.countries } as JobPlace;
-  return tailor(profile, job, llm, { coverLetter: wantsCoverLetter(place, { required: asksForCoverLetter(job.description) }), immigrationText: immigrationText(place) });
+  const byRule = wantsCoverLetter(place, { required: asksForCoverLetter(job.description) });
+  const t = await tailor(profile, job, llm, { coverLetter: byRule || withCover, immigrationText: immigrationText(place) });
+  return !byRule && withCover && t.coverLetter ? { ...t, coverOnRequest: true } : t;
 }
 
 export async function freshTailored(db: Db, userId: string, app: ApplicationRow, profile: Profile, llm: LLM | null): Promise<Tailored> {

@@ -253,4 +253,19 @@ d("TL-06 matches use the latest CV", () => {
     expect(editedButOutdated(edited, changed)).toBe(true);
     expect((await freshTailored(db, u.id, edited, changed, null)).summary).toBe("My own summary.");
   });
+  test("DOC-06 a cover letter you ask for is written for a match that didn't need one, and marked as text only", async () => {
+    const { tailorFor } = await import("@/lib/refresh");
+    const { FakeLLM } = await import("@/lib/llm");
+    const u = await verifiedUser("doc6@example.com");
+    const id = await seedApplication(u.id); // a UK role: no cover letter by the rules
+    const app = (await store.getApplication(db, u.id, id))!;
+    expect(app.tailored.coverLetter).toBeNull();
+    const llm = new FakeLLM((_s, prompt) => ({ roles: [], coverLetter: prompt.includes("cover letter") ? "I'd like to apply." : null }));
+    const p = await store.getProfile(db, u.id);
+    expect((await tailorFor(app, p, llm)).coverLetter).toBeNull();
+    const asked = await tailorFor(app, p, llm, true);
+    expect(asked).toMatchObject({ coverLetter: "I'd like to apply.", coverOnRequest: true });
+    // Kept when the documents are refreshed later.
+    expect((await tailorFor({ ...app, tailored: asked }, p, llm)).coverOnRequest).toBe(true);
+  });
 });

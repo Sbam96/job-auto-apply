@@ -212,6 +212,9 @@ test("DOC-01 DOC-02 the CV downloads as a PDF and as a Word file", async ({ page
     expect(bytes.subarray(0, start.length).toString()).toBe(start);
   }
   await expect(page.getByRole("link", { name: "Cover letter (PDF)" })).toHaveCount(0);
+  // DOC-06: you can ask for one anyway (needs the AI key, which the test server doesn't have).
+  await page.getByRole("button", { name: "Write a cover letter" }).click();
+  await expect(page.locator("[data-cover-on-request] p[role=alert]")).toContainText("needs the AI key");
   expect((await page.request.get(`/applications/${id}/download?doc=cover&format=pdf`)).status()).toBe(404);
 });
 

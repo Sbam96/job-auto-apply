@@ -12,6 +12,7 @@ import { answerAuthQuestion, immigrationText } from "@/lib/workauth";
 import { Card, PageHeader, Score, StatusBadge, buttonClass, secondaryButtonClass } from "@/components/ui";
 import { coverText } from "@/lib/documents";
 import { CopyButton } from "./CopyButton";
+import { WriteCoverLetter } from "./WriteCoverLetter";
 import { DocEditor } from "./DocEditor";
 
 const AUTH_Q = "Are you legally authorised to work in the country where this job is located?";
@@ -24,6 +25,7 @@ const EVENT_LABELS: Record<string, string> = {
   cv_updated: "Documents refreshed from your updated master CV",
   edited: "You edited the documents",
   regenerated: "Documents regenerated",
+  cover_written: "Cover letter written on request",
   downloaded: "Downloaded",
 };
 
@@ -80,12 +82,21 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             <div className="flex flex-wrap gap-2" data-downloads>
               <a href={dl("cv", "pdf")} className={secondaryButtonClass}>CV (PDF)</a>
               <a href={dl("cv", "docx")} className={secondaryButtonClass}>CV (Word)</a>
-              {t.coverLetter && <a href={dl("cover", "pdf")} className={secondaryButtonClass}>Cover letter (PDF)</a>}
-              {t.coverLetter && <a href={dl("cover", "docx")} className={secondaryButtonClass}>Cover letter (Word)</a>}
+              {t.coverLetter && !t.coverOnRequest && <a href={dl("cover", "pdf")} className={secondaryButtonClass}>Cover letter (PDF)</a>}
+              {t.coverLetter && !t.coverOnRequest && <a href={dl("cover", "docx")} className={secondaryButtonClass}>Cover letter (Word)</a>}
               {t.coverLetter && <CopyButton text={coverText(profile, t.coverLetter)} label="Copy cover letter text" className={secondaryButtonClass} />}
             </div>
             {t.coverLetter && <p className="mt-2 text-xs text-muted">For forms with a cover letter box: copy the text and paste it in. It includes the greeting and your sign-off.</p>}
-            {!t.coverLetter && ready && <p className="mt-2 text-xs text-muted">No cover letter: you can work here without sponsorship and the job doesn&apos;t ask for one.</p>}
+            {ready && (!t.coverLetter || t.coverOnRequest) && (
+              <div className="mt-3 rounded-lg border border-line bg-canvas px-3 py-3" data-cover-on-request>
+                <p className="mb-2 text-xs text-muted">
+                  {t.coverLetter
+                    ? "You asked for this cover letter. It's text to copy into the form; there's no file for it."
+                    : "No cover letter needed: you can work here without sponsorship and the job doesn't ask for one. Want one anyway? It's written as text to copy into the form."}
+                </p>
+                <WriteCoverLetter id={id} again={!!t.coverLetter} />
+              </div>
+            )}
           </li>
           {ready && (
             <>

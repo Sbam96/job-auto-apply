@@ -301,6 +301,24 @@ export async function regenerateAction(_: FormState, f: FormData): Promise<FormS
   return { ok: true, message: llm ? "Regenerated from your latest master CV." : "Regenerated using your own wording (the AI key isn't set)." };
 }
 
+// DOC-06: a cover letter on request, for matches that didn't get one. Text to copy into the form.
+export async function writeCoverLetterAction(_: FormState, f: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const db = await getDb();
+  const id = Number(f.get("id"));
+  const app = await store.getApplication(db, user.id, id);
+  if (!app) return fail("That match no longer exists.");
+  const llm = llmFromEnv();
+  if (!llm) return fail("Writing a cover letter needs the AI key (GEMINI_API_KEY) set in Render.");
+  const fresh = await tailorFor(app, await store.getProfile(db, user.id), llm, true);
+  if (!fresh.coverLetter) return fail(`The AI couldn't write one just now${fresh.warnings[0] ? ` (${fresh.warnings[0]})` : ""}. Try again in a minute.`);
+  // Only the letter is added; the CV (and any edits to it) stay as they are.
+  await store.saveTailored(db, user.id, id, { ...app.tailored, coverLetter: fresh.coverLetter, coverOnRequest: !app.tailored.coverLetter || !!app.tailored.coverOnRequest });
+  await db.query("INSERT INTO events (user_id, application_id, kind, detail) VALUES ($1, $2, 'cover_written', NULL)", [user.id, id]);
+  revalidatePath(`/applications/${id}`);
+  return { ok: true, message: "Cover letter written. Copy it into the form's cover letter box." };
+}
+
 // ---------- blocked companies (BL-01) ----------
 
 export async function blockCompanyAction(f: FormData) {
