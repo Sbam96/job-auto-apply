@@ -64,6 +64,7 @@ export interface Profile {
   skills: Skill[];
   thresholds: { apply: number };
   paused: boolean;
+  searchEvery: number; // SC-01: hours between searches (6, 12, 24, 48 or 168)
   blockedCompanies: string[]; // BL-01: never matched with these employers
   savedAnswers: { question: string; answer: string }[]; // EX-08: your answers to questions the app didn't know
   digest: { every: 1 | 2; hour: number }; // NT-01: digest email every 1 or 2 days, at this UK hour (0-23)

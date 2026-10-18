@@ -56,6 +56,15 @@ export const companyKey = (name: string) => String(name ?? "").toLowerCase().rep
 // AP-04: a cover letter is written when the job asks for one.
 export const asksForCoverLetter = (description: string) => /\b(cover(ing)? letter|letter of (motivation|interest)|motivation letter)\b/i.test(String(description ?? ""));
 
+// SC-01: is this user's next search due? A little slack so an hourly scheduler that runs a few
+// minutes early or late doesn't skip a whole cycle.
+export function searchDue(everyHours: number, lastAt: string | Date | null | undefined, now: Date) {
+  if (!lastAt) return true;
+  const last = new Date(lastAt).getTime();
+  if (!Number.isFinite(last)) return true;
+  return now.getTime() - last >= everyHours * 3600000 - 20 * 60000;
+}
+
 export const londonDay = (now: Date) => now.toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
 
 export async function runSearch(deps: { store: PipelineStore; llm: LLM | null; now: Date; fetchImpl?: typeof fetch; includeRemotive?: boolean; includeAggregators?: boolean }): Promise<RunResult> {

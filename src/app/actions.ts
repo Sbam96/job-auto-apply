@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { PASSWORD_MIN, EMPLOYMENT_TYPES, REGIONS, SENIORITY, STATUSES, WORK_MODES, type Status } from "@/lib/config";
+import { DEFAULT_SEARCH_EVERY, SEARCH_CADENCES, PASSWORD_MIN, EMPLOYMENT_TYPES, REGIONS, SENIORITY, STATUSES, WORK_MODES, type Status } from "@/lib/config";
 import { getDb } from "@/lib/db";
 import { validEmail } from "@/lib/auth";
 import { llmFromEnv } from "@/lib/llm";
@@ -133,11 +133,14 @@ export async function savePreferencesAction(_: FormState, f: FormData): Promise<
     } catch { return "Locations couldn't be read; try again."; }
     if (!locations.length) return "Add at least one location with a work mode ticked.";
     const apply = Math.min(100, Math.max(50, Number(f.get("applyThreshold")) || 75));
+    const every = Number(f.get("searchEvery"));
+    const searchEvery = SEARCH_CADENCES.some((c) => c.hours === every) ? every : DEFAULT_SEARCH_EVERY;
     return {
       ...p,
       targetTitles, seniority, seniorityMax, maxYearsAsked, employmentTypes, locations,
       salaryFloor: { usd: money(f, "floorUsd"), gbp: money(f, "floorGbp") },
       thresholds: { apply },
+      searchEvery,
       auth: { usSponsorship: str(f, "usSponsorship") !== "no", canadaSponsorship: true },
       paused: f.get("paused") === "on",
     };

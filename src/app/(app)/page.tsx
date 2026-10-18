@@ -54,7 +54,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </header>
 
       <RouteMap counts={counts} />
-      <LastSearch run={run} />
+      <LastSearch run={run} everyHours={profile.searchEvery} paused={profile.paused} />
 
       {!setupDone && (
         <Card title="Finish setting up" className="mb-8 border-l-4 border-l-stamp">

@@ -36,6 +36,7 @@ export function emptyProfile(): Profile {
     skills: [],
     thresholds: { apply: 75 },
     paused: false,
+    searchEvery: 6,
     blockedCompanies: [],
     savedAnswers: [],
     digest: { every: 1, hour: 8 },

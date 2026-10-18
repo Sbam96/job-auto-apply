@@ -71,7 +71,7 @@ export function employmentTypeOf(job: Pick<Job, "employmentType" | "title" | "de
 }
 
 // MT-04: annual pay in the job's currency. Small numbers are hourly or day rates.
-function annual(n: number) {
+export function annual(n: number) {
   if (n < 200) return n * 2000; // hourly
   if (n < 2000) return n * 230; // daily
   return n;

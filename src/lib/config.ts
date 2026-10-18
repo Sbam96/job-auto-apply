@@ -48,5 +48,15 @@ export const STATUS_LABELS: Record<Status, string> = {
 // Applied and everything after it: the documents are archived, and deleted after APPLIED_RETENTION_DAYS.
 export const APPLIED_STATUSES: readonly Status[] = ["applied", "response", "interview", "offer", "rejected"];
 
+// SC-01: how often new jobs are searched for, in hours. The scheduler checks every hour.
+export const SEARCH_CADENCES = [
+  { hours: 6, label: "Every 6 hours (4 times a day)" },
+  { hours: 12, label: "Twice a day" },
+  { hours: 24, label: "Once a day" },
+  { hours: 48, label: "Every 2 days" },
+  { hours: 168, label: "Once a week" },
+] as const;
+export const DEFAULT_SEARCH_EVERY = 6;
+
 // NT-01: how often the digest email goes out.
 export const DIGEST_EVERY = [1, 2] as const;

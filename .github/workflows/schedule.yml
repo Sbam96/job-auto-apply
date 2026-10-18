@@ -6,12 +6,11 @@ name: Scheduled search and report
 
 on:
   schedule:
-    - cron: "15 6,10,14,18 * * *" # searches four times a day (UTC); Remotive allows 4 fetches a day
-    - cron: "5 * * * *" # every hour: tidy-up, and digest emails for anyone whose chosen hour it is
+    - cron: "5 * * * *" # every hour: searches for anyone due (their chosen cadence), tidy-up, and digest emails
   workflow_dispatch:
     inputs:
       task:
-        description: "search or report (report = tidy-up and any digests due)"
+        description: "search (everyone, now) or report (tidy-up and any digests due)"
         default: "search"
 
 jobs:
@@ -37,7 +36,19 @@ jobs:
           done
       - name: Run
         run: |
-          TASK="search"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then TASK="${{ github.event.inputs.task }}"; fi
-          if [ "${{ github.event.schedule }}" = "5 * * * *" ]; then TASK="report"; fi
-          curl -fsS --max-time 600 -X POST -H "Authorization: Bearer $KEY" "$APP/api/cron/${TASK}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # By hand: "search" searches everyone now; "report" runs the tidy-up and digests.
+            if [ "${{ github.event.inputs.task }}" = "report" ]; then
+              curl -fsS --max-time 600 -X POST -H "Authorization: Bearer $KEY" "$APP/api/cron/report"
+            else
+              curl -fsS --max-time 600 -X POST -H "Authorization: Bearer $KEY" "$APP/api/cron/search?force=1"
+            fi
+          else
+            # Every hour: search for anyone whose cadence is due, then tidy up and send any digests.
+            # A failed search still lets the tidy-up and emails run; the run is marked failed afterwards.
+            FAILED=0
+            curl -fsS --max-time 600 -X POST -H "Authorization: Bearer $KEY" "$APP/api/cron/search" || FAILED=1
+            echo
+            curl -fsS --max-time 600 -X POST -H "Authorization: Bearer $KEY" "$APP/api/cron/report" || FAILED=1
+            exit $FAILED
+          fi

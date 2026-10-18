@@ -3,7 +3,7 @@ import { useActionState, useState } from "react";
 import { savePreferencesAction, type FormState } from "@/app/actions";
 import { FormMessage, SubmitButton } from "@/components/forms";
 import { Card, Field } from "@/components/ui";
-import { EMPLOYMENT_TYPES, MAX_LOCATIONS, REGIONS, SENIORITY, WORK_MODES, type Region } from "@/lib/config";
+import { EMPLOYMENT_TYPES, MAX_LOCATIONS, SEARCH_CADENCES, REGIONS, SENIORITY, WORK_MODES, type Region } from "@/lib/config";
 import type { Profile, UserLocation } from "@/lib/types";
 
 const REGION_NAMES: Record<Region, string> = { US: "United States", CA: "Canada", UK: "United Kingdom", EMEA: "Europe, Middle East & Africa" };
@@ -102,6 +102,11 @@ export function PreferencesForm({ profile: p }: { profile: Profile }) {
       <Card title="Matching">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Match from score" hint="Jobs scoring under this are skipped (default 75). Each match gets its own CV." htmlFor="applyThreshold"><input id="applyThreshold" name="applyThreshold" type="number" min={50} max={100} defaultValue={p.thresholds.apply} className="input" /></Field>
+          <Field label="Search for new jobs" hint="How often the app looks for new jobs. Search now on the dashboard runs one straight away." htmlFor="searchEvery">
+            <select id="searchEvery" name="searchEvery" defaultValue={String(p.searchEvery)} className="input">
+              {SEARCH_CADENCES.map((c) => <option key={c.hours} value={c.hours}>{c.label}</option>)}
+            </select>
+          </Field>
         </div>
         <label className="mt-4 flex items-center gap-2 text-sm"><input type="checkbox" name="paused" defaultChecked={p.paused} /> Pause searching</label>
       </Card>

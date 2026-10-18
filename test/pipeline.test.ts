@@ -156,3 +156,16 @@ describe("EX-06 where a job you found yourself is based", () => {
     expect(placeFor(page(""), p)).toMatchObject({ region: "UK", guessed: true });
   });
 });
+
+describe("SC-01 how often to search", () => {
+  test("SC-01 a search is due once the chosen gap has passed, with a little slack for the hourly scheduler", async () => {
+    const { searchDue } = await import("@/lib/pipeline");
+    const H = 3600000;
+    expect(searchDue(6, null, NOW)).toBe(true);
+    expect(searchDue(6, new Date(NOW.getTime() - 5 * H), NOW)).toBe(false);
+    expect(searchDue(6, new Date(NOW.getTime() - 5.75 * H), NOW)).toBe(true); // the scheduler ran a little early
+    expect(searchDue(24, new Date(NOW.getTime() - 12 * H), NOW)).toBe(false);
+    expect(searchDue(168, new Date(NOW.getTime() - 6 * 24 * H), NOW)).toBe(false);
+    expect(searchDue(168, new Date(NOW.getTime() - 7 * 24 * H).toISOString(), NOW)).toBe(true);
+  });
+});

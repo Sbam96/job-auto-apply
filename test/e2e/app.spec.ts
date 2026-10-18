@@ -282,6 +282,41 @@ test("NT-02 the hourly run needs the cron secret, and emails matches with docume
   expect(mail[0].body).toContain("CV ready");
 });
 
+test("SO-01 SO-02 SO-03 matches sort by best match, highest pay or closest to you", async ({ page }) => {
+  await login(page);
+  await page.request.post("/api/test/seed", { data: { email, company: "Payco", region: "US", description: "Business Analyst. Salary: $150,000 - $170,000. Jira, SQL." } });
+  await page.request.post("/api/test/seed", { data: { email, company: "Homeco", region: "UK", description: "Business Analyst. Salary £45,000 - £50,000. Jira, SQL." } });
+  await page.goto("/applications?view=ready");
+  await page.getByRole("link", { name: "Highest pay" }).click();
+  await expect(page.getByRole("link", { name: "Highest pay" })).toHaveAttribute("aria-current", "true");
+  const companies = async () => (await page.locator("tbody tr td:first-child p").allTextContents()).map((t) => t.split(/⚑/)[0].trim());
+  const bySalary = await companies();
+  expect(bySalary.indexOf("Payco")).toBeLessThan(bySalary.indexOf("Homeco"));
+  await expect(page.locator("tbody tr", { hasText: "Payco" }).locator("[data-pay]")).toHaveText("$150k–$170k");
+  await page.getByRole("link", { name: "Closest to you" }).click();
+  await expect(page.getByRole("link", { name: "Closest to you" })).toHaveAttribute("aria-current", "true");
+  const byPlace = await companies();
+  expect(byPlace.indexOf("Homeco")).toBeLessThan(byPlace.indexOf("Payco"));
+  await expect(page.locator("tbody tr", { hasText: "Payco" }).locator("[data-where]")).toContainText("United States");
+  await page.getByRole("link", { name: "Best match" }).click();
+  await expect(page.getByRole("link", { name: "Best match" })).toHaveAttribute("aria-current", "true");
+});
+
+test("SC-01 you choose how often to search; the hourly run only searches when you're due", async ({ page }) => {
+  await login(page);
+  await page.goto("/preferences");
+  await page.getByLabel("Search for new jobs").selectOption("24");
+  await page.getByRole("button", { name: "Save preferences" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved.");
+  await page.reload();
+  await expect(page.getByLabel("Search for new jobs")).toHaveValue("24");
+  const auth = { Authorization: "Bearer e2e-cron-secret-1234567890" };
+  expect((await page.request.post("/api/cron/search")).status()).toBe(401);
+  const run = await (await page.request.post("/api/cron/search", { headers: auth })).json();
+  expect(run).toHaveProperty("searched");
+  expect(run).toHaveProperty("waiting");
+});
+
 test("UI-01 the app name takes you back to the dashboard", async ({ page }) => {
   await login(page);
   await page.goto("/settings");
